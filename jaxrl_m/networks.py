@@ -32,23 +32,54 @@ def default_init(scale: Optional[float] = 1.0):
     return nn.initializers.variance_scaling(scale, "fan_avg", "uniform")
 
 
+# class MLP(nn.Module):
+#     hidden_dims: Sequence[int]
+#     activations: Callable[[jnp.ndarray], jnp.ndarray] = nn.relu
+#     activate_final: int = False
+#     kernel_init: Callable[[PRNGKey, Shape, Dtype], Array] = default_init()
+
+#     def setup(self):
+#         self.layers = [
+#             nn.Dense(size, kernel_init=self.kernel_init) for size in self.hidden_dims
+#         ]
+
+#     def __call__(self, x: jnp.ndarray) -> jnp.ndarray:
+#         for i, layer in enumerate(self.layers):
+#             x = layer(x)
+#             if i + 1 < len(self.layers) or self.activate_final:
+#                 x = self.activations(x)
+#         return x
+
+
+
+
 class MLP(nn.Module):
     hidden_dims: Sequence[int]
     activations: Callable[[jnp.ndarray], jnp.ndarray] = nn.relu
-    activate_final: int = False
-    kernel_init: Callable[[PRNGKey, Shape, Dtype], Array] = default_init()
+    activate_final: bool = False
+    use_layer_norm: bool = False
+    scale_final: Optional[float] = None
+    dropout_rate: Optional[float] = None
 
-    def setup(self):
-        self.layers = [
-            nn.Dense(size, kernel_init=self.kernel_init) for size in self.hidden_dims
-        ]
+    @nn.compact
+    def __call__(self, x: jnp.ndarray, training: bool = False) -> jnp.ndarray:
 
-    def __call__(self, x: jnp.ndarray) -> jnp.ndarray:
-        for i, layer in enumerate(self.layers):
-            x = layer(x)
-            if i + 1 < len(self.layers) or self.activate_final:
+        for i, size in enumerate(self.hidden_dims):
+            if i + 1 == len(self.hidden_dims) and self.scale_final is not None:
+                x = nn.Dense(size,
+                             kernel_init=default_init(self.scale_final))(x)
+            else:
+                x = nn.Dense(size, kernel_init=default_init())(x)
+
+            if i + 1 < len(self.hidden_dims) or self.activate_final:
+                if self.dropout_rate is not None and self.dropout_rate > 0:
+                    x = nn.Dropout(rate=self.dropout_rate)(
+                        x, deterministic=not training)
+                if self.use_layer_norm:
+                    x = nn.LayerNorm()(x)
                 x = self.activations(x)
         return x
+
 
 
 ###############################
@@ -59,26 +90,23 @@ class MLP(nn.Module):
 ###############################
 
 
-class DiscreteCritic(nn.Module):
-    hidden_dims: Sequence[int]
-    n_actions: int
-    activations: Callable[[jnp.ndarray], jnp.ndarray] = nn.relu
-
-    @nn.compact
-    def __call__(self, observations: jnp.ndarray) -> jnp.ndarray:
-        return MLP((*self.hidden_dims, self.n_actions), activations=self.activations)(
-            observations
-        )
-
-
 class Critic(nn.Module):
     hidden_dims: Sequence[int]
-    activations: Callable[[jnp.ndarray], jnp.ndarray] = nn.relu
+    activations: Callable[[jnp.ndarray], jnp.ndarray] = nn.tanh
+    use_layer_norm: bool = True
+    scale_final: Optional[float] = None
+    dropout_rate: Optional[float] = 0.01
 
     @nn.compact
-    def __call__(self, observations: jnp.ndarray, actions: jnp.ndarray) -> jnp.ndarray:
+    def __call__(self, observations: jnp.ndarray, actions: jnp.ndarray,
+                 *args,**kwargs) -> jnp.ndarray:
         inputs = jnp.concatenate([observations, actions], -1)
-        critic = MLP((*self.hidden_dims, 1), activations=self.activations)(inputs)
+        critic = MLP((*self.hidden_dims, 1), activations=self.activations,
+                     use_layer_norm=self.use_layer_norm,dropout_rate=self.dropout_rate,
+                    )(inputs, *args, **kwargs)
+        
+        #critic = nn.tanh(critic) ## Bonus
+        
         return jnp.squeeze(critic, -1)
 
 
@@ -103,14 +131,6 @@ def ensemblize(cls, num_qs, out_axes=0, **kwargs):
     )
 
 
-class ValueCritic(nn.Module):
-    hidden_dims: Sequence[int]
-
-    @nn.compact
-    def __call__(self, observations: jnp.ndarray) -> jnp.ndarray:
-        critic = MLP((*self.hidden_dims, 1))(observations)
-        return jnp.squeeze(critic, -1)
-
 
 class Policy(nn.Module):
     hidden_dims: Sequence[int]
@@ -127,6 +147,7 @@ class Policy(nn.Module):
     ) -> distrax.Distribution:
         outputs = MLP(
             self.hidden_dims,
+            activations=nn.tanh,### new
             activate_final=True,
         )(observations)
 
@@ -157,88 +178,3 @@ class TransformedWithMode(distrax.Transformed):
     def mode(self) -> jnp.ndarray:
         return self.bijector.forward(self.distribution.mode())
 
-
-###############################
-#
-#
-#   Meta Networks for Encoders
-#
-###############################
-
-
-def get_latent(
-    encoder: nn.Module, observations: Union[jnp.ndarray, Dict[str, jnp.ndarray]]
-):
-    """
-
-    Get latent representation from encoder. If observations is a dict
-        a state and image component, then concatenate the latents.
-
-    """
-    if encoder is None:
-        return observations
-
-    elif isinstance(observations, dict):
-        return jnp.concatenate(
-            [encoder(observations["image"]), observations["state"]], axis=-1
-        )
-
-    else:
-        return encoder(observations)
-
-
-class WithEncoder(nn.Module):
-    encoder: nn.Module
-    network: nn.Module
-
-    def __call__(self, observations, *args, **kwargs):
-        latents = get_latent(self.encoder, observations)
-        return self.network(latents, *args, **kwargs)
-
-
-class ActorCritic(nn.Module):
-    """Combines FC networks with encoders for actor, critic, and value.
-
-    Note: You can share encoder parameters between actor and critic by passing in the same encoder definition for both.
-
-    Example:
-
-        encoder_def = ImpalaEncoder()
-        actor_def = Policy(...)
-        critic_def = Critic(...)
-        # This will share the encoder between actor and critic
-        model_def = ActorCritic(
-            encoders={'actor': encoder_def, 'critic': encoder_def},
-            networks={'actor': actor_def, 'critic': critic_def}
-        )
-        # This will have separate encoders for actor and critic
-        model_def = ActorCritic(
-            encoders={'actor': encoder_def, 'critic': copy.deepcopy(encoder_def)},
-            networks={'actor': actor_def, 'critic': critic_def}
-        )
-    """
-
-    encoders: Dict[str, nn.Module]
-    networks: Dict[str, nn.Module]
-
-    def actor(self, observations, **kwargs):
-        latents = get_latent(self.encoders["actor"], observations)
-        return self.networks["actor"](latents, **kwargs)
-
-    def critic(self, observations, actions, **kwargs):
-        latents = get_latent(self.encoders["critic"], observations)
-        return self.networks["critic"](latents, actions, **kwargs)
-
-    def value(self, observations, **kwargs):
-        latents = get_latent(self.encoders["value"], observations)
-        return self.networks["value"](latents, **kwargs)
-
-    def __call__(self, observations, actions):
-        rets = {}
-        if "actor" in self.networks:
-            rets["actor"] = self.actor(observations)
-        if "critic" in self.networks:
-            rets["critic"] = self.critic(observations, actions)
-        if "value" in self.networks:
-            rets["value"] = self.value(observations)
-        return rets

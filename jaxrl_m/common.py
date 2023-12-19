@@ -49,6 +49,7 @@ class TrainState(flax.struct.PyTreeNode):
     apply_fn: Callable[..., Any] = nonpytree_field()
     model_def: Any = nonpytree_field()
     params: Params
+    batch_stats : Params
     extra_variables: Optional[Params] # Use this to store additional variables that are not being optimized
     tx: Optional[optax.GradientTransformation] = nonpytree_field()
     opt_state: Optional[optax.OptState] = None
@@ -58,6 +59,7 @@ class TrainState(flax.struct.PyTreeNode):
         cls,
         model_def: nn.Module,
         params: Params,
+        batch_stats:Params,
         tx: Optional[optax.GradientTransformation] = None,
         extra_variables: Optional[dict] = None,
         **kwargs,
@@ -75,6 +77,7 @@ class TrainState(flax.struct.PyTreeNode):
             apply_fn=model_def.apply,
             model_def=model_def,
             params=params,
+            batch_stats = batch_stats,
             extra_variables=extra_variables,
             tx=tx,
             opt_state=opt_state,

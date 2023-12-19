@@ -53,41 +53,11 @@ def default_init(scale: Optional[float] = 1.0):
 
 
 
-class MLP(nn.Module):
-    hidden_dims: Sequence[int]
-    activations: Callable[[jnp.ndarray], jnp.ndarray] = nn.tanh
-    activate_final: bool = False
-    use_layer_norm: bool = True
-    scale_final: Optional[float] = None
-    dropout_rate: Optional[float] = None
-
-    @nn.compact
-    def __call__(self, x: jnp.ndarray, training: bool = False) -> jnp.ndarray:
-
-        for i, size in enumerate(self.hidden_dims):
-            if i + 1 == len(self.hidden_dims) and self.scale_final is not None:
-                x = nn.Dense(size,
-                             kernel_init=default_init(self.scale_final))(x)
-            else:
-                x = nn.Dense(size, kernel_init=default_init())(x)
-
-            if i + 1 < len(self.hidden_dims) or self.activate_final:
-                # if self.dropout_rate is not None and self.dropout_rate > 0:
-                #     x = nn.Dropout(rate=self.dropout_rate)(
-                #         x, deterministic=not training)
-                if self.use_layer_norm:
-                    x = nn.LayerNorm()(x)
-                x = self.activations(x)
-        return x
-
-
-
-
 # class MLP(nn.Module):
 #     hidden_dims: Sequence[int]
-#     activations: Callable[[jnp.ndarray], jnp.ndarray] = nn.relu
+#     activations: Callable[[jnp.ndarray], jnp.ndarray] = nn.tanh
 #     activate_final: bool = False
-#     use_layer_norm: bool = False
+#     use_layer_norm: bool = True
 #     scale_final: Optional[float] = None
 #     dropout_rate: Optional[float] = None
 
@@ -102,11 +72,41 @@ class MLP(nn.Module):
 #                 x = nn.Dense(size, kernel_init=default_init())(x)
 
 #             if i + 1 < len(self.hidden_dims) or self.activate_final:
-                
+#                 # if self.dropout_rate is not None and self.dropout_rate > 0:
+#                 #     x = nn.Dropout(rate=self.dropout_rate)(
+#                 #         x, deterministic=not training)
 #                 if self.use_layer_norm:
-#                     x = nn.BatchNorm(use_running_average=not training)(x)
+#                     x = nn.LayerNorm()(x)
 #                 x = self.activations(x)
 #         return x
+
+
+
+
+class MLP(nn.Module):
+    hidden_dims: Sequence[int]
+    activations: Callable[[jnp.ndarray], jnp.ndarray] = nn.tanh
+    activate_final: bool = False
+    use_layer_norm: bool = True
+    scale_final: Optional[float] = None
+    dropout_rate: Optional[float]=None
+    
+    @nn.compact
+    def __call__(self, x: jnp.ndarray, training: bool = False) -> jnp.ndarray:
+
+        for i, size in enumerate(self.hidden_dims):
+            if i + 1 == len(self.hidden_dims) and self.scale_final is not None:
+                x = nn.Dense(size,
+                             kernel_init=default_init(self.scale_final))(x)
+            else:
+                x = nn.Dense(size, kernel_init=default_init())(x)
+
+            if i + 1 < len(self.hidden_dims) or self.activate_final:
+                
+                if self.use_layer_norm:
+                    x = nn.BatchNorm(use_running_average=not training)(x)
+                x = self.activations(x)
+        return x
 
 
 ###############################
@@ -135,6 +135,57 @@ class Critic(nn.Module):
         #critic = nn.tanh(critic) ## Bonus
         
         return jnp.squeeze(critic, -1)
+
+
+
+
+class DeterministicPolicy(nn.Module):
+    hidden_dims: Sequence[int]
+    action_dim: int
+    log_std_min: Optional[float] = -20
+    log_std_max: Optional[float] = 2
+    tanh_squash_distribution: bool = False
+    state_dependent_std: bool = True
+    final_fc_init_scale: float = 1e-2
+
+    @nn.compact
+    def __call__(
+        self, observations: jnp.ndarray, temperature: float = 1.0
+    ) -> distrax.Distribution:
+        outputs = MLP(
+            self.hidden_dims,
+            activations=nn.tanh,### new
+            activate_final=True,
+        )(observations)
+
+        outputs = nn.Dense(
+            self.action_dim, kernel_init=default_init(self.final_fc_init_scale)
+        )(outputs)
+        
+        outputs = nn.tanh(outputs)
+        
+        return outputs
+
+
+
+def ensemblize2(cls, num_qs, out_axes=0, **kwargs):
+    """
+    Useful for making ensembles of Q functions (e.g. double Q in SAC).
+
+    Usage:
+
+        critic_def = ensemblize(Critic, 2)(hidden_dims=hidden_dims)
+
+    """
+    
+    vmap_config = {
+        "variable_axes": {"params": 0, "batch_stats": 0},
+        "split_rngs": {"params": True, "batch_stats": True},
+        "in_axes": (None,None),
+        "out_axes": 0,
+        "axis_size":num_qs,
+            }
+    return nn.vmap(cls,**vmap_config,**kwargs)
 
 
 def ensemblize(cls, num_qs, out_axes=0, **kwargs):
@@ -204,32 +255,3 @@ class Policy(nn.Module):
 class TransformedWithMode(distrax.Transformed):
     def mode(self) -> jnp.ndarray:
         return self.bijector.forward(self.distribution.mode())
-
-
-
-class DeterministicPolicy(nn.Module):
-    hidden_dims: Sequence[int]
-    action_dim: int
-    log_std_min: Optional[float] = -20
-    log_std_max: Optional[float] = 2
-    tanh_squash_distribution: bool = False
-    state_dependent_std: bool = True
-    final_fc_init_scale: float = 1e-2
-
-    @nn.compact
-    def __call__(
-        self, observations: jnp.ndarray, temperature: float = 1.0
-    ) -> distrax.Distribution:
-        outputs = MLP(
-            self.hidden_dims,
-            activations=nn.tanh,### new
-            activate_final=True,
-        )(observations)
-
-        outputs = nn.Dense(
-            self.action_dim, kernel_init=default_init(self.final_fc_init_scale)
-        )(outputs)
-        
-        outputs = nn.tanh(outputs)
-        
-        return outputs

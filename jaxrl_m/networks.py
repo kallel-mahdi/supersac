@@ -137,6 +137,35 @@ class Critic(nn.Module):
         return jnp.squeeze(critic, -1)
 
 
+class DeterministicPolicy(nn.Module):
+    hidden_dims: Sequence[int]
+    action_dim: int
+    log_std_min: Optional[float] = -20
+    log_std_max: Optional[float] = 2
+    tanh_squash_distribution: bool = False
+    state_dependent_std: bool = True
+    final_fc_init_scale: float = 1e-2
+
+    @nn.compact
+    def __call__(
+        self, observations: jnp.ndarray, temperature: float = 1.0
+    ) -> distrax.Distribution:
+        outputs = MLP(
+            self.hidden_dims,
+            activations=nn.tanh,### new
+            activate_final=True,
+        )(observations)
+
+        outputs = nn.Dense(
+            self.action_dim, kernel_init=default_init(self.final_fc_init_scale)
+        )(outputs)
+        
+        outputs = nn.tanh(outputs)
+        
+        return outputs
+    
+
+
 def ensemblize(cls, num_qs, out_axes=0, **kwargs):
     """
     Useful for making ensembles of Q functions (e.g. double Q in SAC).
@@ -158,7 +187,8 @@ def ensemblize(cls, num_qs, out_axes=0, **kwargs):
     )
 
 
-
+ 
+    
 class Policy(nn.Module):
     hidden_dims: Sequence[int]
     action_dim: int
@@ -206,30 +236,3 @@ class TransformedWithMode(distrax.Transformed):
         return self.bijector.forward(self.distribution.mode())
 
 
-
-class DeterministicPolicy(nn.Module):
-    hidden_dims: Sequence[int]
-    action_dim: int
-    log_std_min: Optional[float] = -20
-    log_std_max: Optional[float] = 2
-    tanh_squash_distribution: bool = False
-    state_dependent_std: bool = True
-    final_fc_init_scale: float = 1e-2
-
-    @nn.compact
-    def __call__(
-        self, observations: jnp.ndarray, temperature: float = 1.0
-    ) -> distrax.Distribution:
-        outputs = MLP(
-            self.hidden_dims,
-            activations=nn.tanh,### new
-            activate_final=True,
-        )(observations)
-
-        outputs = nn.Dense(
-            self.action_dim, kernel_init=default_init(self.final_fc_init_scale)
-        )(outputs)
-        
-        outputs = nn.tanh(outputs)
-        
-        return outputs

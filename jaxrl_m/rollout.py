@@ -2,7 +2,7 @@ import jax
 from flax import struct
 import chex
 import numpy as np 
-
+import jax.numpy as jnp
 
 
 @struct.dataclass
@@ -58,7 +58,6 @@ def rollout_policy(agent,env,exploration_rng,
         
         if (done or truncated) :
             
-            #exploration_metrics = {f'exploration/{k}': v for k, v in flatten(info).items()}
             obs,_= env.reset()
             n_rollouts += 1
             episode_step = 0
@@ -69,6 +68,6 @@ def rollout_policy(agent,env,exploration_rng,
                                    policy_return=policy_return,
                                    observations=observations,
                                    disc_masks=disc_masks,
-                                    num_rollouts=num_rollouts)
+                                    num_rollouts=jnp.array(num_rollouts))
     
     return replay_buffer,actor_buffer,policy_rollout,policy_return,n_steps

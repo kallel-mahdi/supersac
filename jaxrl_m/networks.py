@@ -55,7 +55,7 @@ def default_init(scale: Optional[float] = 1.0):
 
 class MLP(nn.Module):
     hidden_dims: Sequence[int]
-    activations: Callable[[jnp.ndarray], jnp.ndarray] = nn.tanh
+    activations: Callable[[jnp.ndarray], jnp.ndarray] = nn.relu
     activate_final: bool = False
     use_layer_norm: bool = True
     scale_final: Optional[float] = None
@@ -119,7 +119,7 @@ class MLP(nn.Module):
 
 class Critic(nn.Module):
     hidden_dims: Sequence[int]
-    activations: Callable[[jnp.ndarray], jnp.ndarray] = nn.tanh
+    activations: Callable[[jnp.ndarray], jnp.ndarray] = nn.relu
     use_layer_norm: bool = True
     scale_final: Optional[float] = None
     dropout_rate: Optional[float] = 0.01
@@ -152,7 +152,7 @@ class DeterministicPolicy(nn.Module):
     ) -> distrax.Distribution:
         outputs = MLP(
             self.hidden_dims,
-            activations=nn.tanh,### new
+            activations=nn.relu,### new
             activate_final=True,
         )(observations)
 
@@ -204,7 +204,7 @@ class Policy(nn.Module):
     ) -> distrax.Distribution:
         outputs = MLP(
             self.hidden_dims,
-            activations=nn.tanh,### new
+            activations=nn.relu,### new
             activate_final=True,
         )(observations)
 

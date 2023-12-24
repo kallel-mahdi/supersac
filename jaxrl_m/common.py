@@ -4,6 +4,7 @@ import flax.linen as nn
 import jax
 import optax
 import functools
+import timeit
 
 nonpytree_field = functools.partial(flax.struct.field, pytree_node=False)
 
@@ -167,3 +168,16 @@ class TrainState(flax.struct.PyTreeNode):
         """
         method = getattr(self.model_def, name)
         return functools.partial(self.__call__, method=method)
+
+
+class CodeTimer:
+    def __init__(self, name=None):
+        self.name = " '"  + name + "'" if name else ''
+
+    def __enter__(self):
+        self.start = timeit.default_timer()
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        self.took = (timeit.default_timer() - self.start)
+        print('Code block' + self.name + ' took: ' + str(self.took) + ' s')
+

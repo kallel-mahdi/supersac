@@ -64,10 +64,11 @@ def rollout_policy(agent,env,exploration_rng,
             disc,mask = 1.,1.
 
     policy_return = (disc_masks*rewards).sum()/num_rollouts
+    undisc_policy_return = (rewards).sum()/num_rollouts
     policy_rollout = PolicyRollout(policy_params=agent.actor.params,
                                    policy_return=policy_return,
                                    observations=observations,
                                    disc_masks=disc_masks,
                                     num_rollouts=jnp.array(num_rollouts))
     
-    return replay_buffer,actor_buffer,policy_rollout,policy_return,n_steps
+    return replay_buffer,actor_buffer,policy_rollout,policy_return,undisc_policy_return,n_steps

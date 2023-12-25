@@ -36,13 +36,12 @@ def rollout_policy(agent,env,exploration_rng,
             action = agent.sample_actions(obs)
         
         next_obs, reward, done, truncated, info = env.step(action)
-        #reward = reward/400
         
         mask = float(not done)
-    
+
+
         transition = dict(observations=obs,actions=action,
             rewards=reward,masks=mask,next_observations=next_obs,discounts=disc)
-        
         
         replay_buffer.add_transition(transition)
         actor_buffer.add_transition(transition)

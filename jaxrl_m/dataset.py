@@ -104,7 +104,6 @@ class ReplayBuffer(Dataset):
     
     def get_all(self):
         
-        
         return jax.tree_map(lambda x: jax.device_put(x), self._dict)
     
     def reset(self):

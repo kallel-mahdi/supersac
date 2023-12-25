@@ -106,7 +106,7 @@ class TrainState(flax.struct.PyTreeNode):
 
         if extra_variables is None:
             extra_variables = self.extra_variables
-        variables = {"params": params, **self.extra_variables}
+        variables = {"params": params, **extra_variables}
 
         if isinstance(method, str):
             method = getattr(self.model_def, method)

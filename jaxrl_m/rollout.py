@@ -9,6 +9,7 @@ import jax.numpy as jnp
 class PolicyRollout:
     
     policy_params : chex.Array
+    policy_stats : chex.Array
     num_rollouts : chex.Array 
     policy_return : chex.Array
     observations : chex.Array
@@ -66,6 +67,7 @@ def rollout_policy(agent,env,exploration_rng,
     policy_return = (disc_masks*rewards).sum()/num_rollouts
     undisc_policy_return = (rewards).sum()/num_rollouts
     policy_rollout = PolicyRollout(policy_params=agent.actor.params,
+                                   policy_stats = agent.actor.extra_variables,
                                    policy_return=policy_return,
                                    observations=observations,
                                    disc_masks=disc_masks,

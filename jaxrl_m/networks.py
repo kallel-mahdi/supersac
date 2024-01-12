@@ -132,7 +132,6 @@ class Critic(nn.Module):
                      use_layer_norm=self.use_layer_norm,dropout_rate=self.dropout_rate,
                     )(inputs,*args, **kwargs)
         
-        #critic = nn.tanh(critic) ## Bonus
         
         return jnp.squeeze(critic, -1)
 

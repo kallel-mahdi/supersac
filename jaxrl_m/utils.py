@@ -58,9 +58,9 @@ def evaluate_critic(anc_critic_params,anc_agent,
     return R2,bias,R2_bound,anc_return_e
 
 @jax.jit
-def train_evaluation(anc_agent,anc_critic_params,
-                    anc_return,policy_rollouts):
+def train_evaluation(anc_agent,anc_return,policy_rollouts):
     
+    anc_critic_params = anc_agent.critic.params
     R2,bias,R2_bound,anc_return_e = jax.vmap(evaluate_critic,in_axes=(0,None,None,None))(anc_critic_params,anc_agent,anc_return,policy_rollouts)
     
     return R2,bias,R2_bound,anc_return_e
@@ -86,6 +86,11 @@ def merge(x,y):
 def flatten_rollouts(policy_rollouts):
     
     n_policies = len(policy_rollouts)
+    #print(f'len_policy_rollouts: {n_policies}')
+    if n_policies == 1:
+        policy_rollouts.append(policy_rollouts[-1]) ## HOTFIX
+    
+    
     merged_rollouts = functools.reduce(merge, policy_rollouts)
     merged_rollouts = jax.tree_map(lambda x:jnp.stack(jnp.split(x,n_policies,axis=0)),merged_rollouts)
     

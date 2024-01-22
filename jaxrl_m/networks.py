@@ -59,7 +59,6 @@ class MLP(nn.Module):
     activate_final: bool = False
     use_layer_norm: bool = True
     scale_final: Optional[float] = None
-    dropout_rate: Optional[float] = None
 
     @nn.compact
     def __call__(self, x: jnp.ndarray, training: bool = False) -> jnp.ndarray:
@@ -72,9 +71,6 @@ class MLP(nn.Module):
                 x = nn.Dense(size, kernel_init=default_init())(x)
 
             if i + 1 < len(self.hidden_dims) or self.activate_final:
-                # if self.dropout_rate is not None and self.dropout_rate > 0:
-                #     x = nn.Dropout(rate=self.dropout_rate)(
-                #         x, deterministic=not training)
                 if self.use_layer_norm:
                     x = nn.LayerNorm()(x)
                 x = self.activations(x)
@@ -122,18 +118,15 @@ class Critic(nn.Module):
     activations: Callable[[jnp.ndarray], jnp.ndarray] = nn.relu
     use_layer_norm: bool = True
     scale_final: Optional[float] = None
-    dropout_rate: Optional[float] = 0.01
 
     @nn.compact
     def __call__(self, observations: jnp.ndarray, actions: jnp.ndarray,
                 *args,**kwargs) -> jnp.ndarray:
         inputs = jnp.concatenate([observations, actions], -1)
         critic = MLP((*self.hidden_dims, 1), activations=self.activations,
-                     use_layer_norm=self.use_layer_norm,dropout_rate=self.dropout_rate,
-                    )(inputs,*args, **kwargs)
+                     use_layer_norm=self.use_layer_norm)(inputs,*args, **kwargs)
         
         #critic = nn.tanh(critic) ## Bonus
-        
         return jnp.squeeze(critic, -1)
 
 
@@ -154,12 +147,13 @@ class DeterministicPolicy(nn.Module):
             self.hidden_dims,
             activations=nn.relu,### new
             activate_final=True,
+            use_layer_norm=True,
         )(observations)
 
         outputs = nn.Dense(
             self.action_dim, kernel_init=default_init(self.final_fc_init_scale)
         )(outputs)
-        
+
         outputs = nn.tanh(outputs)
         
         return outputs
@@ -192,9 +186,9 @@ def ensemblize(cls, num_qs, out_axes=0, **kwargs):
 class Policy(nn.Module):
     hidden_dims: Sequence[int]
     action_dim: int
-    log_std_min: Optional[float] = -20
+    log_std_min: Optional[float] = -10
     log_std_max: Optional[float] = 2
-    tanh_squash_distribution: bool = False
+    tanh_squash_distribution: bool = True
     state_dependent_std: bool = True
     final_fc_init_scale: float = 1e-2
 

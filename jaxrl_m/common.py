@@ -181,3 +181,28 @@ class CodeTimer:
         self.took = (timeit.default_timer() - self.start)
         print('Code block' + self.name + ' took: ' + str(self.took) + ' s')
 
+
+def compute_dormant_layer(activations, percentage):
+    
+
+    mean_output = jnp.abs(activations).mean(axis=0)
+    avg_neuron_output = mean_output.mean()
+    dormant_indices = (mean_output < avg_neuron_output *
+                        percentage)
+    total_neurons = activations.shape[-1]
+    dormant_neurons = jnp.sum(dormant_indices).item()
+    
+    return (dormant_neurons,total_neurons) 
+
+def compute_dormant(agent,observations,percentage):
+
+    params = agent.actor.params
+    filter_dense = lambda mdl, method_name: isinstance(mdl, nn.Dense)
+    _,activations = agent.actor(observations, params=params,capture_intermediates=filter_dense)
+    activations = jax.tree_leaves(activations)
+    tmp = [compute_dormant_layer(x,percentage) for x in activations]
+    dormant = sum([x[0] for x in tmp])
+    total = sum([x[1] for x in tmp])
+    percent_dormant = jnp.sum(dormant)/jnp.sum(total)
+        
+    return percent_dormant

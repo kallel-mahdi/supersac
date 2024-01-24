@@ -88,8 +88,8 @@ def flatten_rollouts(policy_rollouts):
     n_policies = len(policy_rollouts)
     #print(f'len_policy_rollouts: {n_policies}')
     if n_policies == 1:
-        policy_rollouts.append(policy_rollouts[-1]) ## HOTFIX
-    
+        policy_rollouts.append(policy_rollouts[0]) ## HOTFIX
+        n_policies = 2
     
     merged_rollouts = functools.reduce(merge, policy_rollouts)
     merged_rollouts = jax.tree_map(lambda x:jnp.stack(jnp.split(x,n_policies,axis=0)),merged_rollouts)

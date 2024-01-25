@@ -8,11 +8,13 @@ import jax.numpy as jnp
 @struct.dataclass
 class PolicyRollout:
     
-    policy_params : chex.Array
+    policy_params : chex.Array    
     num_rollouts : chex.Array 
     policy_return : chex.Array
     observations : chex.Array
     disc_masks : chex.Array
+    #policy_entropy : chex.Array = jnp.Array(0.,dtype=jnp.float32)
+    
     
 
 def rollout_policy(agent,env,exploration_rng,
@@ -33,7 +35,7 @@ def rollout_policy(agent,env,exploration_rng,
             action = env.action_space.sample()
         else:
             exploration_rng, key = jax.random.split(exploration_rng)
-            action = agent.sample_actions(obs,exploration_rng,random)
+            action = agent.sample_actions(obs,seed=exploration_rng,random=random)
         
         next_obs, reward, done, truncated, info = env.step(action)
         #reward = reward / 400.0

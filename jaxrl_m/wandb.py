@@ -101,9 +101,9 @@ def setup_wandb(
             time.sleep(np.random.uniform(0, random_delay))
         unique_identifier = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
 
-    if name is not None:
+    # if name is not None:
         #name = name.format(**{**get_flag_dict(), **hyperparam_dict})
-        name = "wouloulou"
+        #name = "wouloulou"
 
     if group is not None and name is not None:
         experiment_id = f"{group}_{name}_{unique_identifier}"

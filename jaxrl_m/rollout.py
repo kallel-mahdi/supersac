@@ -11,6 +11,7 @@ class PolicyRollout:
     policy_params : chex.Array    
     num_rollouts : chex.Array 
     policy_return : chex.Array
+    variance : chex.Array
     observations : chex.Array
     disc_masks : chex.Array
     #policy_entropy : chex.Array = jnp.Array(0.,dtype=jnp.float32)
@@ -27,7 +28,7 @@ def rollout_policy(agent,env,exploration_rng,
     n_steps,n_rollouts,episode_step,disc,mask = 0,0,0,1.,1.
     max_steps = num_rollouts*1000
     observations,disc_masks,rewards = np.zeros((max_steps,obs.shape[0])),np.zeros((max_steps,)),np.zeros((max_steps,))
-    
+    policy_returns = np.zeros((num_rollouts,))
     
     while n_rollouts < num_rollouts:
         
@@ -38,7 +39,7 @@ def rollout_policy(agent,env,exploration_rng,
             action = agent.sample_actions(obs,seed=exploration_rng,random=random)
         
         next_obs, reward, done, truncated, info = env.step(action)
-        #reward = reward / 400.0
+        
         mask = float(not done)
 
         transition = dict(observations=obs,actions=action,
@@ -57,21 +58,24 @@ def rollout_policy(agent,env,exploration_rng,
         n_steps += 1
         
         if (done or truncated) :
-            
+            policy_returns[n_rollouts] = (disc_masks[1000*n_rollouts:1000*(n_rollouts+1)]*rewards[1000*n_rollouts:1000*(n_rollouts+1)]).sum()
             obs,_= env.reset()
             n_rollouts += 1
             episode_step = 0
             disc,mask = 1.,1.
+            
 
-    policy_return = (disc_masks*rewards).sum()/num_rollouts
+    policy_return = policy_returns.mean()
+    variance = policy_returns.var()
     undisc_policy_return = (rewards).sum()/num_rollouts
-    policy_rollout = PolicyRollout(policy_params=agent.actor.params,
-                                   policy_return=policy_return,
-                                   observations=observations,
-                                   disc_masks=disc_masks,
+    policy_rollout = PolicyRollout( policy_params=agent.actor.params,
+                                    policy_return=policy_return,
+                                    variance=variance,
+                                    observations=observations,
+                                    disc_masks=disc_masks,
                                     num_rollouts=jnp.array(num_rollouts))
     
-    return replay_buffer,actor_buffer,policy_rollout,policy_return,undisc_policy_return,n_steps
+    return replay_buffer,actor_buffer,policy_rollout,policy_return,variance,undisc_policy_return,n_steps
 
 
 def rollout_policy2(agent,env,exploration_rng,

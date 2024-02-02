@@ -32,27 +32,6 @@ def default_init(scale: Optional[float] = 1.0):
     return nn.initializers.variance_scaling(scale, "fan_avg", "uniform")
 
 
-# class MLP(nn.Module):
-#     hidden_dims: Sequence[int]
-#     activations: Callable[[jnp.ndarray], jnp.ndarray] = nn.relu
-#     activate_final: int = False
-#     kernel_init: Callable[[PRNGKey, Shape, Dtype], Array] = default_init()
-
-#     def setup(self):
-#         self.layers = [
-#             nn.Dense(size, kernel_init=self.kernel_init) for size in self.hidden_dims
-#         ]
-
-#     def __call__(self, x: jnp.ndarray) -> jnp.ndarray:
-#         for i, layer in enumerate(self.layers):
-#             x = layer(x)
-#             if i + 1 < len(self.layers) or self.activate_final:
-#                 x = self.activations(x)
-#         return x
-
-
-
-
 class MLP(nn.Module):
     hidden_dims: Sequence[int]
     activations: Callable[[jnp.ndarray], jnp.ndarray] = nn.relu
@@ -77,40 +56,6 @@ class MLP(nn.Module):
         return x
 
 
-
-
-# class MLP(nn.Module):
-#     hidden_dims: Sequence[int]
-#     activations: Callable[[jnp.ndarray], jnp.ndarray] = nn.relu
-#     activate_final: bool = False
-#     use_layer_norm: bool = False
-#     scale_final: Optional[float] = None
-#     dropout_rate: Optional[float] = None
-
-#     @nn.compact
-#     def __call__(self, x: jnp.ndarray, training: bool = False) -> jnp.ndarray:
-
-#         for i, size in enumerate(self.hidden_dims):
-#             if i + 1 == len(self.hidden_dims) and self.scale_final is not None:
-#                 x = nn.Dense(size,
-#                              kernel_init=default_init(self.scale_final))(x)
-#             else:
-#                 x = nn.Dense(size, kernel_init=default_init())(x)
-
-#             if i + 1 < len(self.hidden_dims) or self.activate_final:
-                
-#                 if self.use_layer_norm:
-#                     x = nn.BatchNorm(use_running_average=not training)(x)
-#                 x = self.activations(x)
-#         return x
-
-
-###############################
-#
-#
-#  Common RL Networks
-#
-###############################
 
 
 class Critic(nn.Module):

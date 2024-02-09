@@ -23,7 +23,7 @@ def rollout_policy(agent,env,exploration_rng,
                    warmup=False,num_rollouts=5,random=False):
     
     
-    actor_buffer.reset()
+    actor_buffer = actor_buffer.reset()
     obs,_ = env.reset()  
     n_steps,n_rollouts,episode_step,disc,mask = 0,0,0,1.,1.
     max_steps = num_rollouts*1000

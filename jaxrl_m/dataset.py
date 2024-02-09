@@ -110,3 +110,4 @@ class ReplayBuffer(Dataset):
     def reset(self):
         self.size = 0
         self.pointer = 0
+        return self

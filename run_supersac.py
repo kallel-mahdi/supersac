@@ -25,9 +25,11 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--seed',type=int,default=42) 
 parser.add_argument('--env_name',type=str,default="HalfCheetah-v4") 
 parser.add_argument('--project_name',type=str,default="delete") 
+parser.add_argument('--max_steps',type=int,default=1e6) 
 parser.add_argument('--num_critics',type=int,default=5) 
 parser.add_argument('--num_rollouts',type=int,default=10) 
 parser.add_argument('--backup_entropy',type=bool,default=True) 
+parser.add_argument('--discount_actor',type=bool,default=True) 
 
 args = parser.parse_args()
 # cfg = itertools.product([args.seed],[args.env_name],[args.project_name],[args.algo_name],
@@ -173,15 +175,21 @@ class SACAgent(flax.struct.PyTreeNode):
             q_weights = jax.nn.softmax(R2,axis=0)
             q = jnp.sum(q_weights.reshape(-1,1)*q_all,axis=0)
             
-            actor_loss = (discounts*(log_probs * agent.temp() - q)).sum()/discounts.sum()
+            if agent.config['discount_actor']:                
+                actor_loss = (discounts*(log_probs * agent.temp() - q)).sum()/discounts.sum()
+                entropy = -1 * ((discounts*log_probs)/jnp.sum(discounts)).sum()
+                
+            else : 
+                actor_loss = (log_probs * agent.temp() - q).mean()
+                entropy = -1 * log_probs.mean()
             # lr_bonus = jnp.exp(jnp.max(R2))/jnp.exp(1)
             # actor_loss = actor_loss*lr_bonus
+            
            
             return actor_loss, {
                 'actor_loss': actor_loss,
-                'entropy': -1 * ((discounts*log_probs)/jnp.sum(discounts)).sum(),
-                #'entropy': -1 * log_probs.mean(),
-            }
+                'entropy':entropy,
+              }
         
         
         def temp_loss_fn(temp_params, entropy, target_entropy):
@@ -229,6 +237,7 @@ def create_learner(
                 target_entropy: float = None,
                 backup_entropy: bool = True,
                 num_critics: int=5,
+                discount_actor = True,
             **kwargs):
 
         print('Extra kwargs:', kwargs)
@@ -263,7 +272,8 @@ def create_learner(
             backup_entropy=backup_entropy,  
             observations=observations,
             actions=actions,  
-            num_critics = num_critics,        
+            num_critics = num_critics, 
+            discount_actor = discount_actor,       
         ))
 
         return SACAgent(rng, critic=critics, target_critic=critics, actor=actor, temp=temp, config=config)
@@ -296,7 +306,7 @@ def train(args):
 
     eval_episodes=10
     batch_size = 256
-    max_steps = int(1e5)
+    max_steps = args.max_steps
     start_steps = 10000                 
     log_interval = 5000
 
@@ -329,6 +339,7 @@ def train(args):
                     example_transition['actions'][None],
                     max_steps=max_steps,
                     backup_entropy=args.backup_entropy,
+                    discount_actor=args.discount_actor,
                     #**FLAGS.config
                     )
 

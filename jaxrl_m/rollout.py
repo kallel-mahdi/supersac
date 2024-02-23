@@ -85,10 +85,11 @@ def rollout_policy2(agent,env,exploration_rng,
     
     actor_buffer.reset()
     obs,_ = env.reset()  
-    n_steps,n_rollouts,episode_step,disc,mask,last_done = 0,0,0,1.,1.,0
+    n_steps,n_rollouts,episode_step,disc,mask = 0,0,0,1.,1.
+    old_last_done,last_done = 0,0
     max_steps = num_rollouts*1000
-    observations,disc_masks,rewards = np.zeros((max_steps,obs.shape[0])),np.zeros((max_steps,)),np.zeros((max_steps,))
-    
+    observations,disc_masks,masks,rewards = np.zeros((max_steps,obs.shape[0])),np.zeros((max_steps,)),np.zeros((max_steps,)),np.zeros((max_steps,))
+    policy_returns = []
     
     while n_steps < max_steps:
         
@@ -106,8 +107,9 @@ def rollout_policy2(agent,env,exploration_rng,
         actor_buffer.add_transition(transition)
     
         observations[n_steps] = obs
-        disc_masks[n_steps] = disc
+        disc_masks[n_steps] = disc*mask
         rewards[n_steps] = reward
+        masks[n_steps] = mask
         
         obs = next_obs
         disc *= (0.99*mask)
@@ -115,13 +117,18 @@ def rollout_policy2(agent,env,exploration_rng,
         n_steps += 1
         
         if (done or truncated) :
-            
+            policy_returns.append((disc_masks[last_done:last_done+episode_step]*rewards[last_done:last_done+episode_step]).sum())
             obs,_= env.reset()
             n_rollouts += 1
             episode_step = 0
             disc,mask = 1.,1.
             last_done = n_steps
+            
 
+    
+    
+    
+    
     
     observations = observations[:last_done]
     observations = jnp.pad(observations, ((0, max_steps - len(observations)), (0, 0)), mode='constant', constant_values=0)
@@ -132,14 +139,27 @@ def rollout_policy2(agent,env,exploration_rng,
     rewards = rewards[:last_done]
     rewards = jnp.pad(rewards, (0, max_steps - len(rewards)), mode='constant', constant_values=0)
     
-    policy_return = (disc_masks*rewards).sum()/n_rollouts
-    undisc_policy_return = (rewards).sum()/n_rollouts
+    policy_returns = jnp.array(policy_returns)
+    
+    undisc_policy_return = (masks*rewards).sum()/n_rollouts
 
-    policy_rollout = PolicyRollout(policy_params=agent.actor.params,
-                                   policy_return=policy_return,
-                                   observations=observations,
-                                   disc_masks=disc_masks,
-                                   num_rollouts=jnp.array(n_rollouts))
+    # policy_rollout = PolicyRollout(policy_params=agent.actor.params,
+    #                                policy_return=policy_return,
+    #                                observations=observations,
+    #                                disc_masks=disc_masks,
+    #                                num_rollouts=jnp.array(n_rollouts))
 
-    return replay_buffer, actor_buffer, policy_rollout, policy_return, undisc_policy_return, n_steps
+    # return replay_buffer, actor_buffer, policy_rollout, policy_return, undisc_policy_return, n_steps
  
+    policy_return = policy_returns.mean()
+    variance = policy_returns.var()
+    #print(f'policy_returns {policy_returns} policy_return {policy_return} variance {variance} undisc_policy_return {undisc_policy_return}')
+    undisc_policy_return = (rewards).sum()/n_rollouts
+    policy_rollout = PolicyRollout( policy_params=agent.actor.params,
+                                    policy_return=policy_return,
+                                    variance=variance,
+                                    observations=observations,
+                                    disc_masks=disc_masks,
+                                    num_rollouts=jnp.array(n_rollouts))
+    
+    return replay_buffer,actor_buffer,policy_rollout,policy_return,variance,undisc_policy_return,n_steps

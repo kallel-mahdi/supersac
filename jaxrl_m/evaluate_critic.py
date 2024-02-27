@@ -8,7 +8,7 @@ def f(anc_agent,obs,actor_params,critic_params,seed):
 
     dist = anc_agent.actor(obs, params=actor_params)
     actions, _ = dist.sample_and_log_prob(seed=seed)
-    q = anc_agent.critic(obs, actions,params=critic_params)
+    q,_ = anc_agent.critic(obs, actions,params=critic_params)
    
     return q
     
@@ -44,8 +44,11 @@ def evaluate_one_critic(anc_critic_params,
                    anc_critic_params =anc_critic_params,
                    anc_return = anc_return,seed=seed)
     y_pred,y = jax.vmap(predict_rollout)(policy_rollouts)
-    a2 = ((y-y_pred)**2).sum()
-    b2=jnp.clip(((y-y.mean())**2).sum(),1e-8)
+    variances = policy_rollouts.variance
+    weights = 1/variances
+    a2 = (weights * ((y-y_pred)**2)).sum()
+    b2 = (weights * ((y-y.mean())**2)).sum()
+    b2=jnp.clip(b2,1e-8)
     R2 = 1-(a2/b2)  
     bias = (y_pred-y).mean()
     

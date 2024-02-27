@@ -58,6 +58,24 @@ class MLP(nn.Module):
 
 
 
+# class Critic(nn.Module):
+#     hidden_dims: Sequence[int]
+#     activations: Callable[[jnp.ndarray], jnp.ndarray] = nn.relu
+#     use_layer_norm: bool = True
+#     scale_final: Optional[float] = None
+
+#     @nn.compact
+#     def __call__(self, observations: jnp.ndarray, actions: jnp.ndarray,
+#                 *args,**kwargs) -> jnp.ndarray:
+#         inputs = jnp.concatenate([observations, actions], -1)
+#         critic = MLP((*self.hidden_dims, 1), activations=self.activations,
+#                      use_layer_norm=self.use_layer_norm)(inputs,*args, **kwargs)
+        
+#         #critic = nn.tanh(critic) ## Bonus
+#         return jnp.squeeze(critic, -1)
+
+
+
 class Critic(nn.Module):
     hidden_dims: Sequence[int]
     activations: Callable[[jnp.ndarray], jnp.ndarray] = nn.relu
@@ -68,37 +86,10 @@ class Critic(nn.Module):
     def __call__(self, observations: jnp.ndarray, actions: jnp.ndarray,
                 *args,**kwargs) -> jnp.ndarray:
         inputs = jnp.concatenate([observations, actions], -1)
-        critic = MLP((*self.hidden_dims, 1), activations=self.activations,
+        critic = MLP((*self.hidden_dims, 2), activations=self.activations,
                      use_layer_norm=self.use_layer_norm)(inputs,*args, **kwargs)
-        
-        #critic = nn.tanh(critic) ## Bonus
-        return jnp.squeeze(critic, -1)
-
-
-class DeterministicPolicy(nn.Module):
-    hidden_dims: Sequence[int]
-    action_dim: int
-    final_fc_init_scale: float = 1.0
-    
-    @nn.compact
-    def __call__(
-        self, observations: jnp.ndarray, 
-    ) -> distrax.Distribution:
-        outputs = MLP(
-            self.hidden_dims,
-            activations=nn.relu,### new
-            activate_final=True,
-            use_layer_norm=True,
-        )(observations)
-
-        outputs = nn.Dense(
-            self.action_dim, kernel_init=default_init(self.final_fc_init_scale)
-        )(outputs)
-
-        outputs = nn.tanh(outputs)
-        
-        return outputs
-    
+        #print(f'critic shape: {critic.shape}')
+        return critic[:,0] , critic[:,1]
 
 
 def ensemblize(cls, num_qs, out_axes=0, **kwargs):

@@ -19,11 +19,11 @@ class PolicyRollout:
     
 
 def rollout_policy(agent,env,exploration_rng,
-                   replay_buffer,actor_buffer,
-                   warmup=False,num_rollouts=5,random=False):
+                   replay_buffer=None,actor_buffer=None,
+                   warmup=False,num_rollouts=5,random=False,discount=0.99):
     
-    
-    actor_buffer = actor_buffer.reset()
+    if actor_buffer is not None:
+        actor_buffer = actor_buffer.reset()
     obs,_ = env.reset()  
     n_steps,n_rollouts,episode_step,disc,mask = 0,0,0,1.,1.
     max_steps = num_rollouts*1000
@@ -45,15 +45,18 @@ def rollout_policy(agent,env,exploration_rng,
         transition = dict(observations=obs,actions=action,
             rewards=reward,masks=mask,next_observations=next_obs,discounts=disc)
         
-        replay_buffer.add_transition(transition)
-        actor_buffer.add_transition(transition)
+        if replay_buffer is not None:
+            replay_buffer.add_transition(transition)
+        
+        if actor_buffer is not None:
+            actor_buffer.add_transition(transition)
     
         observations[1000*n_rollouts+episode_step] = obs
         disc_masks[1000*n_rollouts+episode_step] = disc
         rewards[1000*n_rollouts+episode_step] = reward
         
         obs = next_obs
-        disc *= (0.99*mask)
+        disc *= (discount*mask)
         episode_step += 1
         n_steps += 1
         
@@ -80,7 +83,7 @@ def rollout_policy(agent,env,exploration_rng,
 
 def rollout_policy2(agent,env,exploration_rng,
                    replay_buffer,actor_buffer,
-                   warmup=False,num_rollouts=5,random=False):
+                   warmup=False,num_rollouts=5,random=False,discount=0.99):
     
     
     actor_buffer.reset()
@@ -112,7 +115,7 @@ def rollout_policy2(agent,env,exploration_rng,
         masks[n_steps] = mask
         
         obs = next_obs
-        disc *= (0.99*mask)
+        disc *= (discount*mask)
         episode_step += 1
         n_steps += 1
         

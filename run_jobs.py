@@ -16,8 +16,8 @@ def str2bool(v):
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--seed',type=int,default=42) 
-parser.add_argument('--env_name',type=str,default="HalfCheetah-v4") 
-parser.add_argument('--project_name',type=str,default="delete") 
+parser.add_argument('--env_name',type=str,default="Walker2d-v4") 
+parser.add_argument('--project_name',type=str,default="Walker2d_nips") 
 parser.add_argument('--gamma',type=float,default=0.99)
 parser.add_argument('--max_steps',type=int,default=1e6) 
 parser.add_argument('--num_rollouts',type=int,default=5) 
@@ -34,12 +34,18 @@ seeds = list(np.random.randint(0,1e6,5))
 
 
 configs = itertools.product(seeds,[args.env_name],[args.project_name],
-                            [args.gamma],[args.max_steps],[args.num_rollouts],
-                            [args.num_critics],[args.adaptive_critics],[args.backup_entropy],[args.discount_actor])
+                            [args.gamma],[args.max_steps],[5,8],
+                            [args.num_critics],[args.adaptive_critics],[args.backup_entropy],[True,False])
             
             
 for cfg in configs :
     
+    import time
+    import random
+
+    # Add random time pause
+    time.sleep(random.uniform(0.1,3))
+
     command = f'sbatch job_file.sh\
     --seed  {cfg[0]} --env_name {cfg[1]} --project_name {cfg[2]} \
     --gamma {cfg[3]} --max_steps {cfg[4]} --num_rollouts {cfg[5]} \

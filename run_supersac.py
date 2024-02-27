@@ -186,8 +186,11 @@ class SACAgent(flax.struct.PyTreeNode):
             q_e = jnp.mean(q_e_all,axis=0)
             q = q_r + q_e
             
-            actor_loss = (discounts*(log_probs * agent.temp() - q)).sum()/discounts.sum()
-            actor_loss = (log_probs * agent.temp() - q).mean()
+            if agent.config['discount_actor']:
+                actor_loss = (discounts*(log_probs * agent.temp() - q)).sum()/discounts.sum()
+            
+            else :
+                actor_loss = (log_probs * agent.temp() - q).mean()
             # lr_bonus = jnp.exp(jnp.max(R2))/jnp.exp(1)
             # actor_loss = actor_loss*lr_bonus
            

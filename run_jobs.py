@@ -32,8 +32,11 @@ args = parser.parse_args()
 np.random.seed(42)
 seeds = list(np.random.randint(0,1e6,5))
 
+
 configs = itertools.product(seeds,[args.env_name],[args.project_name],
-                            [args.num_critics],[args.num_rollouts],[args.backup_entropy],[args.discount_actor])
+                            [args.gamma],[args.max_steps],[args.num_rollouts],
+                            [args.num_critics],[args.adaptive_critics],[args.backup_entropy],[args.discount_actor])
+            
             
 for cfg in configs :
     

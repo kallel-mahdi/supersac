@@ -6,4 +6,6 @@ gymnasium[mujoco]
 wandb
 tqdm
 ml_collections
-#jax[cuda12_pip] -U -f https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
+--pre
+--find-links https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
+jax[cuda]

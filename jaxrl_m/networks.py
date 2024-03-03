@@ -90,6 +90,23 @@ class Critic(nn.Module):
                      use_layer_norm=self.use_layer_norm)(inputs,*args, **kwargs)
         #print(f'critic shape: {critic.shape}')
         return critic[:,0] , critic[:,1]
+    
+    
+
+class OriginalCritic(nn.Module):
+    hidden_dims: Sequence[int]
+    activations: Callable[[jnp.ndarray], jnp.ndarray] = nn.relu
+    use_layer_norm: bool = True
+    scale_final: Optional[float] = None
+
+    @nn.compact
+    def __call__(self, observations: jnp.ndarray, actions: jnp.ndarray,
+                *args,**kwargs) -> jnp.ndarray:
+        inputs = jnp.concatenate([observations, actions], -1)
+        critic = MLP((*self.hidden_dims, 2), activations=self.activations,
+                     use_layer_norm=self.use_layer_norm)(inputs,*args, **kwargs)
+        #print(f'critic shape: {critic.shape}')
+        return critic[:,0] , critic[:,1]
 
 
 def ensemblize(cls, num_qs, out_axes=0, **kwargs):

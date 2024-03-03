@@ -146,13 +146,6 @@ def rollout_policy2(agent,env,exploration_rng,
     
     undisc_policy_return = (masks*rewards).sum()/n_rollouts
 
-    # policy_rollout = PolicyRollout(policy_params=agent.actor.params,
-    #                                policy_return=policy_return,
-    #                                observations=observations,
-    #                                disc_masks=disc_masks,
-    #                                num_rollouts=jnp.array(n_rollouts))
-
-    # return replay_buffer, actor_buffer, policy_rollout, policy_return, undisc_policy_return, n_steps
  
     policy_return = policy_returns.mean()
     variance = policy_returns.var()

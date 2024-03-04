@@ -33,14 +33,14 @@ os.environ['TF_CUDNN_DETERMINISTIC'] = '1'
 ##############################
 parser = argparse.ArgumentParser()
 parser.add_argument('--seed',type=int,default=42) 
-parser.add_argument('--env_name',type=str,default="Walker2d-v5") 
-parser.add_argument('--project_name',type=str,default="delete-v5") 
+parser.add_argument('--env_name',type=str,default="Hopper-v5") 
+parser.add_argument('--project_name',type=str,default="PPO_style") 
 parser.add_argument('--gamma',type=float,default=0.995)
 parser.add_argument('--max_steps',type=int,default=1e6) 
-parser.add_argument('--num_rollouts',type=int,default=8) 
-parser.add_argument('--num_critics',type=int,default=5) 
-parser.add_argument('--adaptive_critics',type=str2bool,default=True) 
-parser.add_argument('--backup_entropy',type=str2bool,default=True) 
+parser.add_argument('--num_rollouts',type=int,default=2) 
+parser.add_argument('--num_critics',type=int,default=1) 
+parser.add_argument('--adaptive_critics',type=str2bool,default=False) 
+parser.add_argument('--discount_entropy',type=str2bool,default=True) 
 parser.add_argument('--discount_actor',type=str2bool,default=True) 
 parser.add_argument('--max_episode_steps',type=int,default=1000) 
 
@@ -192,13 +192,14 @@ class SACAgent(flax.struct.PyTreeNode):
             
             if agent.config['discount_actor']:
                 actor_loss = (discounts*(log_probs * agent.temp() - q)).sum()/discounts.sum()
-                
-            
             else :
                 actor_loss = (log_probs * agent.temp() - q).mean()
             
-            entropy = -1 * log_probs.mean()
-            #entropy = -1 * ((discounts*log_probs)/(discounts.sum())).sum()
+            if agent.config['discount_entropy']:
+                entropy = -1 * ((discounts*log_probs)/(discounts.sum())).sum()
+            else : 
+                entropy = -1 * log_probs.mean()
+            #
             # lr_bonus = jnp.exp(jnp.max(R2))/jnp.exp(1)
             # actor_loss = actor_loss*lr_bonus
            
@@ -248,6 +249,7 @@ def create_learner(
                 discount: float,
                 num_critics: int,
                 discount_actor ,
+                discount_entropy,
                 
                 actor_lr: float = 3e-4,
                 critic_lr: float = 3e-4,
@@ -277,20 +279,19 @@ def create_learner(
         
         temp_def = Temperature()
         temp_params = temp_def.init(rng)['params']
-        temp = TrainState.create(temp_def, temp_params, tx=optax.sgd(learning_rate=5e-4))
-    
+        temp = TrainState.create(temp_def, temp_params, tx=optax.sgd(learning_rate=1e-3))
         
         if target_entropy is None:
-            target_entropy = - action_dim
+            target_entropy = - 2*action_dim
 
         config = flax.core.FrozenDict(dict(
             discount=discount,
             target_entropy=target_entropy,
-            backup_entropy=backup_entropy,  
             observations=observations,
             actions=actions,  
             num_critics = num_critics, 
-            discount_actor = discount_actor,       
+            discount_actor = discount_actor, 
+            discount_entropy = discount_entropy,      
         ))
 
         return SACAgent(rng, critic=critics, target_critic=critics, actor=actor, temp=temp, config=config)
@@ -357,8 +358,8 @@ def train(args):
                     actions =example_transition['actions'][None],
                     max_steps=max_steps,
                     discount=args.gamma,
-                    backup_entropy=args.backup_entropy,
                     discount_actor=args.discount_actor,
+                    discount_entropy=args.discount_entropy,
                     num_critics= args.num_critics,
                     #**FLAGS.config
                     )
@@ -377,7 +378,7 @@ def train(args):
         while (i < max_steps):
 
             warmup=(i < start_steps)
-            replay_buffer,actor_buffer,policy_rollout,policy_return,variance,undisc_policy_return,num_steps = rollout_policy(
+            replay_buffer,actor_buffer,policy_rollout,policy_return,variance,undisc_policy_return,num_steps = rollout_policy2(
                                                                     agent,env,exploration_rng,
                                                                     replay_buffer,actor_buffer,warmup=warmup,
                                                                     num_rollouts=args.num_rollouts,random=False,

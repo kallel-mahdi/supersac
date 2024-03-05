@@ -16,8 +16,8 @@ def str2bool(v):
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--seed',type=int,default=42) 
-parser.add_argument('--env_name',type=str,default="Walker2d-v4") 
-parser.add_argument('--project_name',type=str,default="Walker2d_nips") 
+parser.add_argument('--env_name',type=str,default="Walker2d-v5") 
+parser.add_argument('--project_name',type=str,default="Walker2d_lasthope") 
 parser.add_argument('--gamma',type=float,default=0.99)
 parser.add_argument('--max_steps',type=int,default=1_000_000) 
 parser.add_argument('--num_rollouts',type=int,default=5) 
@@ -31,12 +31,9 @@ args = parser.parse_args()
 
 np.random.seed(42)
 seeds = list(np.random.randint(0,1e6,5))
-
-
 configs = itertools.product(seeds,[args.env_name],[args.project_name],
                             [args.gamma],[args.max_steps],[5,8],
-                            [args.num_critics],[args.adaptive_critics],[args.backup_entropy],[True,False])
-            
+                            [args.num_critics],[args.adaptive_critics],[args.discount_entropy],[True,False])
             
 for cfg in configs :
     

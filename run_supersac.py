@@ -33,15 +33,15 @@ os.environ['TF_CUDNN_DETERMINISTIC'] = '1'
 ##############################
 parser = argparse.ArgumentParser()
 parser.add_argument('--seed',type=int,default=42) 
-parser.add_argument('--env_name',type=str,default="Hopper-v5") 
-parser.add_argument('--project_name',type=str,default="PPO_style") 
-parser.add_argument('--gamma',type=float,default=0.995)
+parser.add_argument('--env_name',type=str,default="Walker2d-v5") 
+parser.add_argument('--project_name',type=str,default="low_entropy") 
+parser.add_argument('--gamma',type=float,default=0.99)
 parser.add_argument('--max_steps',type=int,default=1e6) 
 parser.add_argument('--num_rollouts',type=int,default=2) 
 parser.add_argument('--num_critics',type=int,default=1) 
 parser.add_argument('--adaptive_critics',type=str2bool,default=False) 
-parser.add_argument('--discount_entropy',type=str2bool,default=True) 
-parser.add_argument('--discount_actor',type=str2bool,default=True) 
+parser.add_argument('--discount_entropy',type=str2bool,default=False) 
+parser.add_argument('--discount_actor',type=str2bool,default=False) 
 parser.add_argument('--max_episode_steps',type=int,default=1000) 
 
 args = parser.parse_args()
@@ -80,6 +80,10 @@ class Temperature(nn.Module):
         log_temp = self.param('log_temp',
                               init_fn=lambda key: jnp.full(
                                   (), self.initial_temperature))
+        
+        old_entropy = self.param('old_entropy',
+                            init_fn=lambda key: jnp.full(
+                                (), self.initial_temperature))
         return jnp.abs(log_temp)
         
 
@@ -199,9 +203,6 @@ class SACAgent(flax.struct.PyTreeNode):
                 entropy = -1 * ((discounts*log_probs)/(discounts.sum())).sum()
             else : 
                 entropy = -1 * log_probs.mean()
-            #
-            # lr_bonus = jnp.exp(jnp.max(R2))/jnp.exp(1)
-            # actor_loss = actor_loss*lr_bonus
            
             return actor_loss, {
                 'actor_loss': actor_loss,
@@ -209,21 +210,36 @@ class SACAgent(flax.struct.PyTreeNode):
             }
         
         
+        # def temp_loss_fn(temp_params, entropy, target_entropy):
+        #     temperature = agent.temp(params=temp_params)
+        #     entropy_diff = entropy-target_entropy
+        #     temp_loss = (temperature * entropy_diff).mean()
+        #     return temp_loss, {
+        #         'temp_loss': temp_loss,
+        #         'temperature': temperature,
+        #         'entropy_diff': entropy_diff,
+        #     }
+
+         
         def temp_loss_fn(temp_params, entropy, target_entropy):
             temperature = agent.temp(params=temp_params)
+            old_entropy = temp_params["old_entropy"]
             entropy_diff = entropy-target_entropy
-            temp_loss = (temperature * entropy_diff).mean()
-            return temp_loss, {
+            entropy_shift = (entropy-old_entropy)
+            temp_loss = temperature * (entropy_diff+entropy_shift)
+            
+            return temp_loss,{
                 'temp_loss': temp_loss,
                 'temperature': temperature,
                 'entropy_diff': entropy_diff,
+                'entropy':entropy,
             }
-
         loss_fn = partial(actor_loss_fn,R2=R2)
         new_actor, actor_info = agent.actor.apply_loss_fn(loss_fn=loss_fn, has_aux=True)
         temp_loss_fn = functools.partial(temp_loss_fn, entropy=actor_info['entropy'], target_entropy=agent.config['target_entropy'])
         new_temp, temp_info = agent.temp.apply_loss_fn(loss_fn=temp_loss_fn, has_aux=True)
         new_temp.params["log_temp"]=jnp.clip(new_temp.params["log_temp"],1e-6,1)
+        new_temp.params["old_entropy"] = temp_info['entropy'] ### new
         agent = agent.replace(rng=new_rng, temp=new_temp)
         new_actor, actor_info = agent.actor.apply_loss_fn(loss_fn=loss_fn, has_aux=True)
         
@@ -274,15 +290,14 @@ def create_learner(
         critics = jax.vmap(TrainState.create,in_axes=(None,0,None))(critic_def,critic_params,optax.adam(learning_rate=3e-4))
 
         actor_params = actor_def.init(actor_key, observations)['params']
-        #actor = TrainState.create(actor_def, actor_params, tx=optax.adam(learning_rate=3e-4,b1=0.9))
         actor = TrainState.create(actor_def, actor_params, tx=optax.rmsprop(learning_rate=3e-4))
         
         temp_def = Temperature()
         temp_params = temp_def.init(rng)['params']
-        temp = TrainState.create(temp_def, temp_params, tx=optax.sgd(learning_rate=1e-3))
+        temp = TrainState.create(temp_def, temp_params, tx=optax.sgd(learning_rate=3e-4))
         
         if target_entropy is None:
-            target_entropy = - 2*action_dim
+            target_entropy = - 1.5*action_dim
 
         config = flax.core.FrozenDict(dict(
             discount=discount,
@@ -331,12 +346,12 @@ def train(args):
 
     wandb_config = {
         'project': args.project_name,
-        'name': 'sac_{env_name}_{seed}'.format(env_name=args.env_name, seed=args.seed),
+        'name': None,
         'hyperparam_dict':args.__dict__,
         }
     
 
-    env = EpisodeMonitor(gym.make(args.env_name,max_episode_steps=args.max_episode_steps))
+    env = EpisodeMonitor(gym.make(args.env_name,max_episode_steps=args.max_episode_steps,healthy_reward=1.))
     eval_env = EpisodeMonitor(gym.make(args.env_name))
     wandb_run = setup_wandb(**wandb_config)
 
@@ -349,7 +364,7 @@ def train(args):
         discounts=1.0,
     )
 
-    replay_buffer = ReplayBuffer.create(example_transition, size=int(1_000_000))
+    replay_buffer = ReplayBuffer.create(example_transition, size=int(200_000))
     actor_buffer = ReplayBuffer.create(example_transition, size=int(10e3))
 
     agent = create_learner(args.seed,
@@ -394,9 +409,9 @@ def train(args):
             
                 ### Update critics ###
                 transitions = replay_buffer.get_all()
-                tmp = partial(jax.random.choice,a=replay_buffer.size, shape=(5000,1024), replace=True)
+                tmp = partial(jax.random.choice,a=replay_buffer.size, shape=(4000,256), replace=True)
                 idxs = jax.vmap(tmp)(jax.random.split(agent.rng, args.num_critics))
-                agent, critic_update_info = agent.update_many_critics(transitions,idxs,5000,R2)
+                agent, critic_update_info = agent.update_many_critics(transitions,idxs,4000,R2)
 
                 ### Update critic weights ## 
                 if len(policy_rollouts)>=10 and args.adaptive_critics:   
@@ -440,7 +455,6 @@ def train(args):
                 ### Log evaluation info ###
                 if unlogged_steps >= log_interval:
                     
-                
                     # _,_,_,disc_policy_return,_,undisc_policy_return_e,_ = rollout_policy(agent,eval_env,exploration_rng,
                     #                                                     None,None,warmup=False,
                     #                                                     num_rollouts=10,random=False,discount=args.gamma,

@@ -25,7 +25,7 @@ parser.add_argument('--num_critics',type=int,default=5)
 parser.add_argument('--adaptive_critics',type=str2bool,default=True) 
 parser.add_argument('--discount_entropy',type=str2bool,default=False) 
 parser.add_argument('--discount_actor',type=str2bool,default=True) 
-
+parser.add_argument('--entropy_coeff',type=float,default=-1.) 
 args = parser.parse_args()
 ##############################
 
@@ -33,7 +33,7 @@ np.random.seed(42)
 seeds = list(np.random.randint(0,1e6,5))
 configs = itertools.product(seeds,[args.env_name],[args.project_name],
                             [args.gamma],[args.max_steps],[5],
-                            [args.num_critics],[args.adaptive_critics],[args.discount_entropy],[True,False])
+                            [args.num_critics],[args.adaptive_critics],[args.discount_entropy],[True],[-1,-1.5])
             
 for cfg in configs :
     

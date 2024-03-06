@@ -43,6 +43,7 @@ parser.add_argument('--adaptive_critics',type=str2bool,default=True)
 parser.add_argument('--discount_entropy',type=str2bool,default=False) 
 parser.add_argument('--discount_actor',type=str2bool,default=True) 
 parser.add_argument('--max_episode_steps',type=int,default=1000) 
+parser.add_argument('--entropy_coeff',type=float,default=-1.) 
 
 args = parser.parse_args()
 
@@ -248,6 +249,7 @@ def create_learner(
                 num_critics: int,
                 discount_actor ,
                 discount_entropy,
+                entropy_coeff,
                 
                 actor_lr: float = 3e-4,
                 critic_lr: float = 3e-4,
@@ -279,7 +281,7 @@ def create_learner(
         temp = TrainState.create(temp_def, temp_params, tx=optax.sgd(learning_rate=1e-3))
         
         if target_entropy is None:
-            target_entropy = - 1*action_dim
+            target_entropy = - entropy_coeff*action_dim
 
         config = flax.core.FrozenDict(dict(
             discount=discount,
@@ -358,6 +360,7 @@ def train(args):
                     discount_actor=args.discount_actor,
                     discount_entropy=args.discount_entropy,
                     num_critics= args.num_critics,
+                    entropy_coeff=args.entropy_coeff,
                     hidden_dims=hidden_dims,
                     #**FLAGS.config
                     )

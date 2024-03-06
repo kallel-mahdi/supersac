@@ -28,13 +28,19 @@ import jax.numpy as jnp
 ###############################
 
 
-def default_init(scale: Optional[float] = 1.0):
-    return nn.initializers.variance_scaling(scale, "fan_avg", "uniform")
+# def default_init(scale: Optional[float] = 1.0):
+#     return nn.initializers.variance_scaling(scale, "fan_avg", "uniform")
 
+# def default_actor_init(scale: Optional[float] = 0.01):
+#     return nn.initializers.orthogonal(scale)
+
+def default_init(scale: Optional[float] = jnp.sqrt(2.0)):
+
+    return nn.initializers.orthogonal(scale)
 
 class MLP(nn.Module):
     hidden_dims: Sequence[int]
-    activations: Callable[[jnp.ndarray], jnp.ndarray] = nn.relu
+    activations: Callable[[jnp.ndarray], jnp.ndarray] = nn.tanh
     activate_final: bool = False
     use_layer_norm: bool = True
     scale_final: Optional[float] = None
@@ -45,7 +51,7 @@ class MLP(nn.Module):
         for i, size in enumerate(self.hidden_dims):
             if i + 1 == len(self.hidden_dims) and self.scale_final is not None:
                 x = nn.Dense(size,
-                             kernel_init=default_init(self.scale_final))(x)
+                             kernel_init=default_init())(x)
             else:
                 x = nn.Dense(size, kernel_init=default_init())(x)
 
@@ -60,7 +66,7 @@ class MLP(nn.Module):
 
 # class Critic(nn.Module):
 #     hidden_dims: Sequence[int]
-#     activations: Callable[[jnp.ndarray], jnp.ndarray] = nn.relu
+#     activations: Callable[[jnp.ndarray], jnp.ndarray] = nn.tanh
 #     use_layer_norm: bool = True
 #     scale_final: Optional[float] = None
 
@@ -78,7 +84,7 @@ class MLP(nn.Module):
 
 class Critic(nn.Module):
     hidden_dims: Sequence[int]
-    activations: Callable[[jnp.ndarray], jnp.ndarray] = nn.relu
+    activations: Callable[[jnp.ndarray], jnp.ndarray] = nn.tanh
     use_layer_norm: bool = True
     scale_final: Optional[float] = None
 
@@ -95,7 +101,7 @@ class Critic(nn.Module):
 
 class OriginalCritic(nn.Module):
     hidden_dims: Sequence[int]
-    activations: Callable[[jnp.ndarray], jnp.ndarray] = nn.relu
+    activations: Callable[[jnp.ndarray], jnp.ndarray] = nn.tanh
     use_layer_norm: bool = True
     scale_final: Optional[float] = None
 
@@ -147,7 +153,7 @@ class Policy(nn.Module):
     ) -> distrax.Distribution:
         outputs = MLP(
             self.hidden_dims,
-            activations=nn.relu,### new
+            activations=nn.tanh,### new
             activate_final=True,
         )(observations)
 

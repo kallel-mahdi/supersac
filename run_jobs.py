@@ -17,13 +17,13 @@ def str2bool(v):
 parser = argparse.ArgumentParser()
 parser.add_argument('--seed',type=int,default=42) 
 parser.add_argument('--env_name',type=str,default="Walker2d-v5") 
-parser.add_argument('--project_name',type=str,default="Walker2d_lasthope") 
-parser.add_argument('--gamma',type=float,default=0.99)
-parser.add_argument('--max_steps',type=int,default=1_000_000) 
+parser.add_argument('--project_name',type=str,default="Walker2d_true_tanh") 
+parser.add_argument('--gamma',type=float,default=0.995)
+parser.add_argument('--max_steps',type=int,default=2_000_000) 
 parser.add_argument('--num_rollouts',type=int,default=5) 
 parser.add_argument('--num_critics',type=int,default=5) 
 parser.add_argument('--adaptive_critics',type=str2bool,default=True) 
-parser.add_argument('--discount_entropy',type=str2bool,default=True) 
+parser.add_argument('--discount_entropy',type=str2bool,default=False) 
 parser.add_argument('--discount_actor',type=str2bool,default=True) 
 
 args = parser.parse_args()
@@ -32,7 +32,7 @@ args = parser.parse_args()
 np.random.seed(42)
 seeds = list(np.random.randint(0,1e6,5))
 configs = itertools.product(seeds,[args.env_name],[args.project_name],
-                            [args.gamma],[args.max_steps],[5,8],
+                            [args.gamma],[args.max_steps],[5],
                             [args.num_critics],[args.adaptive_critics],[args.discount_entropy],[True,False])
             
 for cfg in configs :

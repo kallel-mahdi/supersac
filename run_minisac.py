@@ -33,14 +33,14 @@ os.environ['TF_CUDNN_DETERMINISTIC'] = '1'
 ##############################
 parser = argparse.ArgumentParser()
 parser.add_argument('--seed',type=int,default=42) 
-parser.add_argument('--env_name',type=str,default="Walker2d-v5") 
+parser.add_argument('--env_name',type=str,default="HalfCheetah-v5") 
 parser.add_argument('--project_name',type=str,default="delete") 
 parser.add_argument('--gamma',type=float,default=0.995)
 parser.add_argument('--max_steps',type=int,default=1e6) 
 parser.add_argument('--num_rollouts',type=int,default=5) 
 parser.add_argument('--num_critics',type=int,default=5) 
 parser.add_argument('--adaptive_critics',type=str2bool,default=True) 
-parser.add_argument('--discount_entropy',type=str2bool,default=True) 
+parser.add_argument('--discount_entropy',type=str2bool,default=False) 
 parser.add_argument('--discount_actor',type=str2bool,default=True) 
 parser.add_argument('--max_episode_steps',type=int,default=1000) 
 parser.add_argument('--entropy_coeff',type=float,default=1.) 
@@ -73,17 +73,29 @@ from functools import partial
 
 
 
-class Temperature(nn.Module):
-    initial_temperature: float = 1e-3
+"""Implementations of algorithms for continuous control."""
+import functools
+from jaxrl_m.typing import *
 
-    
+import jax
+import jax.numpy as jnp
+import numpy as np
+import optax
+from jaxrl_m.common import TrainState, target_update, nonpytree_field
+from jaxrl_m.networks import Policy, Critic,OriginalCritic, ensemblize
+
+import flax
+import flax.linen as nn
+
+class Temperature(nn.Module):
+    initial_temperature: float = 1.0
+
     @nn.compact
     def __call__(self) -> jnp.ndarray:
         log_temp = self.param('log_temp',
                               init_fn=lambda key: jnp.full(
-                                  (), self.initial_temperature))
-        return jnp.abs(log_temp)
-        
+                                  (), jnp.log(self.initial_temperature)))
+        return jnp.exp(log_temp)
 
 class SACAgent(flax.struct.PyTreeNode):
     rng: PRNGKey
@@ -92,146 +104,81 @@ class SACAgent(flax.struct.PyTreeNode):
     actor: TrainState
     temp: TrainState
     config: dict = nonpytree_field()
-    
-    
-    @jax.jit    
-    def reset_critic_optimizer(agent):
-    
-        new_opt_state = agent.critic.tx.init(agent.critic.params)
-        new_critic = agent.critic.replace(opt_state=new_opt_state)
-        
-        return agent.replace(critic=new_critic)
 
-    @partial(jax.jit,static_argnames=('num_steps',))  
-    def update_many_critics(agent,transitions: Batch,idxs:jnp.array,num_steps:int,R2):
-
-        def update_one_critic(critic,idxs,
-                            agent,transitions,num_steps):
-            
-            def one_update(agent,critic,batch: Batch):
-                                  
-                def critic_loss_fn(critic_params):
-                        
-                        
-                        next_dist = agent.actor(batch['next_observations'])
-                        next_actions, next_log_probs = next_dist.sample_and_log_prob(seed=next_key)
-
-                        next_q_r,next_q_e = agent.critic(batch['next_observations'], next_actions,True,params=critic_params)
-                        q_r,q_e = agent.critic(batch['observations'], batch['actions'],True,params=critic_params)
-                        
-                        target_q_r = batch['rewards'] + agent.config['discount'] * batch['masks'] *next_q_r 
-                        target_q_e =  batch['discounts'] * batch['masks'] *(next_q_e - agent.temp() * next_log_probs)
-                            
-                        target_q_e = jax.lax.stop_gradient(target_q_e)
-                        target_q_r = jax.lax.stop_gradient(target_q_r)
-                        
-                        critic_loss = ((target_q_r-q_r)**2 + (target_q_e-q_e)**2).mean() 
-                        
-                        return critic_loss, {
-                        'critic_loss': critic_loss,
-                        'q1': q_r.mean(),
-                    }  
-                
-        
-                new_critic, critic_info = critic.apply_loss_fn(loss_fn=critic_loss_fn, has_aux=True)
-                
-                return agent,new_critic
-            
-            
-            get_batch = lambda transitions,idx : jax.tree_map(lambda x : x[idx],transitions)
-                
-            agent,new_critic = jax.lax.fori_loop(0, num_steps, 
-                        lambda i, args: one_update(*args,get_batch(transitions,idxs[i])),
-                        (agent,critic))
-            
-            return new_critic
-        
-        
+    @partial(jax.jit,static_argnames=('num_steps',))
+    def update_critic(agent, transitions:Batch,idxs:np.ndarray,num_steps,R2:np.ndarray):
         new_rng, curr_key, next_key = jax.random.split(agent.rng, 3)
-        critic = agent.critic
-        
-        ###### Reset critic params ######
-        
-        reset = lambda rng,params : critic.init(rng,
-                                                agent.config["observations"], agent.config["actions"],False)["params"]
-        no_reset = lambda rng,params: params
-        f = lambda  mask,rng,params :lax.cond(mask,reset,no_reset,rng,params)
-        mask = jnp.zeros(( agent.config["num_critics"],))
-        if agent.config['num_critics']>1:
-            mask.at[jnp.argmin(R2)].set(1)
-        rngs = jax.random.split(agent.rng, agent.config["num_critics"])
-        critic_params = jax.vmap(f,in_axes=(0,0,0))(mask,rngs,critic.params)
-        ###################################
-        critic_def = Critic(hidden_dims)
-        critics = jax.vmap(TrainState.create,in_axes=(None,0,None))(critic_def,critic_params,optax.adam(learning_rate=3e-4))
-        tmp = partial(update_one_critic,agent=agent,transitions=transitions,num_steps=num_steps)
-        new_critics = jax.vmap(tmp,in_axes=(0,0))(critics,idxs)
-        agent = agent.replace(rng=new_rng,critic=new_critics)
-        
-        return agent,{}
-    
 
+        def one_update(agent,batch:Batch):
+            
+            def critic_loss_fn(critic_params):
+                next_dist = agent.actor(batch['next_observations'])
+                next_actions, next_log_probs = next_dist.sample_and_log_prob(seed=next_key)
+
+                next_q1, next_q2 = agent.target_critic(batch['next_observations'], next_actions)
+                next_q = jnp.minimum(next_q1, next_q2)
+                target_q = batch['rewards'] + agent.config['discount'] * batch['masks'] * next_q
+
+                if agent.config['backup_entropy']:
+                    target_q = target_q - agent.config['discount'] * batch['masks'] * next_log_probs * agent.temp()
+                
+                q1, q2 = agent.critic(batch['observations'], batch['actions'], params=critic_params)
+                critic_loss = ((q1 - target_q)**2 + (q2 - target_q)**2).mean()
+                
+                return critic_loss, {
+                    'critic_loss': critic_loss,
+                    'q1': q1.mean(),
+                }
+        
+        def get_batch(transitions,idx):
+                return jax.tree_map(lambda x : x[idx],transitions)
+            
+        def loop_body(i, args):
+                return one_update(*args,get_batch(transitions,idxs[i]))
+            
+        #get_batch = lambda transitions,idx : jax.tree_map(lambda x : x[idx],transitions)
+            
+        agent,new_critic = jax.lax.fori_loop(0, num_steps,loop_body,(agent,))
+        
+        return agent.replace(rng=new_rng, critic=new_critic)
+        
+        
+    
     @jax.jit
-    def update_actor(agent, batch: Batch,R2):
+    def update_actor(agent,batch:Batch):
+        
         new_rng, curr_key, next_key = jax.random.split(agent.rng, 3)
 
-        def actor_loss_fn(actor_params,R2):
-            observations = jnp.repeat(batch['observations'], 10, axis=0)
-            discounts = jnp.repeat(batch['discounts'], 10, axis=0)
-            masks = jnp.int32(jnp.repeat(batch['masks'], 10, axis=0))
-
-            dist = agent.actor(observations, params=actor_params)
+        def actor_loss_fn(actor_params):
+            dist = agent.actor(batch['observations'], params=actor_params)
             actions, log_probs = dist.sample_and_log_prob(seed=curr_key)
             
-            
-            call_one_critic = lambda observations,actions,params : agent.critic(observations,actions,params=params)
-            q_r_all,q_e_all = jax.vmap(call_one_critic,in_axes=(None,None,0))(observations, actions,agent.critic.params)##critic_update_info
-            
-            q_weights = jax.nn.softmax(R2,axis=0)
-            q_r = jnp.sum(q_weights.reshape(-1,1)*q_r_all,axis=0)
-            q_e = jnp.mean(q_e_all,axis=0)
-            q = q_r + q_e
-            
-            ### Pad Q and logits because actor buffer is padded ###
-            
-            q = masks *q
-            log_probs = masks * log_probs
-            
-            if agent.config['discount_actor']:
-                actor_loss = (discounts*(log_probs * agent.temp() - q)).sum()/discounts.sum()
-            else :
-                actor_loss = (log_probs * agent.temp() - q)/masks.sum()
-            
-            if agent.config['discount_entropy']:
-                entropy = -1 * ((discounts*log_probs)/(discounts.sum())).sum()
-            else : 
-                entropy = -1 * log_probs/masks.sum()
-        
+            q1, q2 = agent.critic(batch['observations'], actions)
+            q = jnp.minimum(q1, q2)
+
+            actor_loss = (log_probs * agent.temp() - q).mean()
             return actor_loss, {
                 'actor_loss': actor_loss,
-                'entropy': entropy,
+                'entropy': -1 * log_probs.mean(),
             }
-        
         
         def temp_loss_fn(temp_params, entropy, target_entropy):
             temperature = agent.temp(params=temp_params)
-            entropy_diff = entropy-target_entropy
-            temp_loss = (temperature * entropy_diff).mean()
+            temp_loss = (temperature * (entropy - target_entropy)).mean()
             return temp_loss, {
                 'temp_loss': temp_loss,
                 'temperature': temperature,
-                'entropy_diff': entropy_diff,
             }
+        
+        # new_critic, critic_info = agent.critic.apply_loss_fn(loss_fn=critic_loss_fn, has_aux=True)
+        # new_target_critic = target_update(agent.critic, agent.target_critic, agent.config['target_update_rate'])
+        new_actor, actor_info = agent.actor.apply_loss_fn(loss_fn=actor_loss_fn, has_aux=True)
 
-        loss_fn = partial(actor_loss_fn,R2=R2)
-        new_actor, actor_info = agent.actor.apply_loss_fn(loss_fn=loss_fn, has_aux=True)
         temp_loss_fn = functools.partial(temp_loss_fn, entropy=actor_info['entropy'], target_entropy=agent.config['target_entropy'])
         new_temp, temp_info = agent.temp.apply_loss_fn(loss_fn=temp_loss_fn, has_aux=True)
-        new_temp.params["log_temp"]=jnp.clip(new_temp.params["log_temp"],1e-6,1)
-        agent = agent.replace(rng=new_rng, temp=new_temp)
-        new_actor, actor_info = agent.actor.apply_loss_fn(loss_fn=loss_fn, has_aux=True)
-        
-        return agent.replace(rng=new_rng, actor=new_actor), {**actor_info, **temp_info}
+
+        return agent.replace(rng=new_rng, actor=new_actor, temp=new_temp), {
+             **actor_info, **temp_info}
 
     @jax.jit
     def sample_actions(agent,   
@@ -247,21 +194,17 @@ class SACAgent(flax.struct.PyTreeNode):
 
 
 def create_learner(
-                seed: int,
-                observations: jnp.ndarray,
-                actions: jnp.ndarray,
-                discount: float,
-                num_critics: int,
-                discount_actor ,
-                discount_entropy,
-                entropy_coeff,
-                
-                actor_lr: float = 3e-4,
-                critic_lr: float = 3e-4,
-                temp_lr: float =3e-1,## Test
-                hidden_dims: Sequence[int] = (256, 256),
-                target_entropy: float = None,
-                backup_entropy: bool = True,
+                 seed: int,
+                 observations: jnp.ndarray,
+                 actions: jnp.ndarray,
+                 actor_lr: float = 3e-4,
+                 critic_lr: float = 3e-4,
+                 temp_lr: float = 3e-4,
+                 hidden_dims: Sequence[int] = (256, 256),
+                 discount: float = 0.99,
+                 tau: float = 0.005,
+                 target_entropy: float = None,
+                 backup_entropy: bool = True,
             **kwargs):
 
         print('Extra kwargs:', kwargs)
@@ -270,37 +213,47 @@ def create_learner(
         rng, actor_key, critic_key = jax.random.split(rng, 3)
 
         action_dim = actions.shape[-1]
-        actor_def = Policy(hidden_dims, action_dim=action_dim,
-            state_dependent_std=True, tanh_squash_distribution=True)
-
-        critic_def = Critic(hidden_dims)
-        critic_keys  = jax.random.split(critic_key, num_critics)
-        critic_params = jax.vmap(critic_def.init,in_axes=(0,None,None))(critic_keys, observations, actions)['params']
-        critics = jax.vmap(TrainState.create,in_axes=(None,0,None))(critic_def,critic_params,optax.adam(learning_rate=3e-4))
+        actor_def = Policy(hidden_dims, action_dim=action_dim, 
+            log_std_min=-10.0, state_dependent_std=True, tanh_squash_distribution=True, final_fc_init_scale=1.0)
 
         actor_params = actor_def.init(actor_key, observations)['params']
-        actor = TrainState.create(actor_def, actor_params, tx=optax.rmsprop(learning_rate=3e-4))
-        
+        actor = TrainState.create(actor_def, actor_params, tx=optax.adam(learning_rate=actor_lr))
+
+        critic_def = ensemblize(OriginalCritic, num_qs=2)(hidden_dims)
+        critic_params = critic_def.init(critic_key, observations, actions)['params']
+        critic = TrainState.create(critic_def, critic_params, tx=optax.adam(learning_rate=critic_lr))
+        target_critic = TrainState.create(critic_def, critic_params)
+
         temp_def = Temperature()
         temp_params = temp_def.init(rng)['params']
-        temp = TrainState.create(temp_def, temp_params, tx=optax.sgd(learning_rate=1e-3))
-        
+        temp = TrainState.create(temp_def, temp_params, tx=optax.adam(learning_rate=temp_lr))
+
         if target_entropy is None:
-            target_entropy = -entropy_coeff*action_dim
+            #target_entropy = -0.5 * action_dim
+            target_entropy = - action_dim
 
         config = flax.core.FrozenDict(dict(
             discount=discount,
+            target_update_rate=tau,
             target_entropy=target_entropy,
-            observations=observations,
-            actions=actions,  
-            num_critics = num_critics, 
-            discount_actor = discount_actor, 
-            discount_entropy = discount_entropy,      
+            backup_entropy=backup_entropy,            
         ))
 
-        return SACAgent(rng, critic=critics, target_critic=critics, actor=actor, temp=temp, config=config)
+        return SACAgent(rng, critic=critic, target_critic=target_critic, actor=actor, temp=temp, config=config)
 
+def get_default_config():
+    import ml_collections
 
+    return ml_collections.ConfigDict({
+        'actor_lr': 3e-4,
+        'critic_lr': 3e-4,
+        'temp_lr': 3e-4,
+        'hidden_dims': (256, 256),
+        'discount': 0.99,
+        'tau': 0.005,
+        'target_entropy': ml_collections.config_dict.placeholder(float),
+        'backup_entropy': True,
+    })
 
 def train(args):
     
@@ -315,7 +268,7 @@ def train(args):
     from jaxrl_m.wandb import setup_wandb, default_wandb_config, get_flag_dict
     import wandb
     from jaxrl_m.evaluation import supply_rng, evaluate, flatten, EpisodeMonitor
-    from jaxrl_m.dataset import ReplayBuffer
+    from jaxrl_m.dataset import ReplayBuffer,ActorReplayBuffer
     from collections import deque
     from jax import config
     from jaxrl_m.utils import flatten_rollouts
@@ -354,7 +307,7 @@ def train(args):
     )
 
     replay_buffer = ReplayBuffer.create(example_transition, size=int(200_000))
-    actor_buffer = ReplayBuffer.create(example_transition, size=int(10e3))
+    actor_buffer = ActorReplayBuffer.create(example_transition, size=int(10e3))
 
     agent = create_learner(args.seed,
                         
@@ -370,16 +323,20 @@ def train(args):
                     #**FLAGS.config
                     )
 
+    # agent.update_actor = jax.jit(agent.update_actor)
+    # agent.update_many_critics = jax.jit(agent.update_many_critics,static_argnames=('num_steps',))
+    
     exploration_metrics = dict()
     obs,info = env.reset()    
     exploration_rng = jax.random.PRNGKey(0)
     i = 0
     unlogged_steps = 0
-    policy_rollouts = deque([], maxlen=30)
+    policy_rollouts = deque([], maxlen=10)
     warmup = True
     R2,bias = jnp.ones(args.num_critics),jnp.zeros(args.num_critics)
 
     with tqdm.tqdm(total=max_steps) as pbar:
+        
         
         while (i < max_steps):
 
@@ -397,12 +354,17 @@ def train(args):
             pbar.update(num_steps)
                 
             if replay_buffer.size > start_steps and len(policy_rollouts)>0:
+                
+                        
+               
             
                 ### Update critics ###
                 transitions = replay_buffer.get_all()
                 tmp = partial(jax.random.choice,a=replay_buffer.size, shape=(5000,256), replace=True)
                 idxs = jax.vmap(tmp)(jax.random.split(agent.rng, args.num_critics))
-                agent, critic_update_info = agent.update_many_critics(transitions,idxs,5000,R2)
+                
+                
+                agent, critic_update_info = agent.update_critic(transitions,idxs,5000,R2)
 
                 ### Update critic weights ## 
                 if len(policy_rollouts)>=10 and args.adaptive_critics:   
@@ -411,8 +373,10 @@ def train(args):
                     R2,bias = evaluate_many_critics(agent,policy_rollout.policy_return,flattened_rollouts)
 
                 ### Update actor ###
-                actor_batch = actor_buffer.get_all()      
-                agent, actor_update_info = agent.update_actor(actor_batch,R2)    
+                actor_batch = actor_buffer.get_all()
+                with jax.log_compiles(True):
+            
+                    agent, actor_update_info = agent.update_actor(actor_batch,R2)    
                 update_info = {**critic_update_info, **actor_update_info}
                 
                 ### Log training info ###

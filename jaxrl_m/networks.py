@@ -46,7 +46,7 @@ class MLP(nn.Module):
     scale_final: Optional[float] = None
 
     @nn.compact
-    def __call__(self, x: jnp.ndarray, training: bool = False) -> jnp.ndarray:
+    def __call__(self, x: jnp.ndarray) -> jnp.ndarray:
 
         for i, size in enumerate(self.hidden_dims):
             if i + 1 == len(self.hidden_dims) and self.scale_final is not None:

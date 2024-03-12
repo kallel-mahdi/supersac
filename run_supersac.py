@@ -33,7 +33,7 @@ os.environ['TF_CUDNN_DETERMINISTIC'] = '1'
 ##############################
 parser = argparse.ArgumentParser()
 parser.add_argument('--seed',type=int,default=42) 
-parser.add_argument('--env_name',type=str,default="Walker2d-v5") 
+parser.add_argument('--env_name',type=str,default="HalfCheetah-v5") 
 parser.add_argument('--project_name',type=str,default="delete") 
 parser.add_argument('--gamma',type=float,default=0.995)
 parser.add_argument('--max_steps',type=int,default=1e6) 
@@ -92,17 +92,9 @@ class SACAgent(flax.struct.PyTreeNode):
     actor: TrainState
     temp: TrainState
     config: dict = nonpytree_field()
-    
-    
-    @jax.jit    
-    def reset_critic_optimizer(agent):
-    
-        new_opt_state = agent.critic.tx.init(agent.critic.params)
-        new_critic = agent.critic.replace(opt_state=new_opt_state)
-        
-        return agent.replace(critic=new_critic)
 
-    @partial(jax.jit,static_argnames=('num_steps',))  
+
+    #@partial(jax.jit,static_argnames=('num_steps',))  
     def update_many_critics(agent,transitions: Batch,idxs:jnp.array,num_steps:int,R2):
 
         def update_one_critic(critic,idxs,
@@ -116,8 +108,8 @@ class SACAgent(flax.struct.PyTreeNode):
                         next_dist = agent.actor(batch['next_observations'])
                         next_actions, next_log_probs = next_dist.sample_and_log_prob(seed=next_key)
 
-                        next_q_r,next_q_e = agent.critic(batch['next_observations'], next_actions,True,params=critic_params)
-                        q_r,q_e = agent.critic(batch['observations'], batch['actions'],True,params=critic_params)
+                        next_q_r,next_q_e = agent.critic(batch['next_observations'], next_actions,params=critic_params)
+                        q_r,q_e = agent.critic(batch['observations'], batch['actions'],params=critic_params)
                         
                         target_q_r = batch['rewards'] + agent.config['discount'] * batch['masks'] *next_q_r 
                         target_q_e =  batch['discounts'] * batch['masks'] *(next_q_e - agent.temp() * next_log_probs)
@@ -138,11 +130,17 @@ class SACAgent(flax.struct.PyTreeNode):
                 return agent,new_critic
             
             
-            get_batch = lambda transitions,idx : jax.tree_map(lambda x : x[idx],transitions)
+            def get_batch(transitions,idx):
                 
-            agent,new_critic = jax.lax.fori_loop(0, num_steps, 
-                        lambda i, args: one_update(*args,get_batch(transitions,idxs[i])),
-                        (agent,critic))
+                def fetch_batch_idx(x):
+                    return x[idx]
+                
+                return jax.tree_map(fetch_batch_idx,transitions)
+            
+            def update_one_batch(i,args):
+                return one_update(*args,get_batch(transitions,idxs[i]))
+                
+            agent,new_critic = jax.lax.fori_loop(0, num_steps, update_one_batch,(agent,critic))
             
             return new_critic
         
@@ -151,21 +149,23 @@ class SACAgent(flax.struct.PyTreeNode):
         critic = agent.critic
         
         ###### Reset critic params ######
+        def f(mask,rng,params):
+            def reset(rng,params):
+                return critic.init(rng,agent.config["observations"], agent.config["actions"])["params"]
+
+            def no_reset(rng,params):
+                return params
+            
+            return lax.cond(mask,reset,no_reset,rng,params)
         
-        reset = lambda rng,params : critic.init(rng,
-                                                agent.config["observations"], agent.config["actions"],False)["params"]
-        no_reset = lambda rng,params: params
-        f = lambda  mask,rng,params :lax.cond(mask,reset,no_reset,rng,params)
         mask = jnp.zeros(( agent.config["num_critics"],))
-        if agent.config['num_critics']>1:
-            mask.at[jnp.argmin(R2)].set(1)
+        if agent.config['num_critics']>1: mask.at[jnp.argmin(R2)].set(1)
         rngs = jax.random.split(agent.rng, agent.config["num_critics"])
         critic_params = jax.vmap(f,in_axes=(0,0,0))(mask,rngs,critic.params)
         ###################################
         critic_def = Critic(hidden_dims)
         critics = jax.vmap(TrainState.create,in_axes=(None,0,None))(critic_def,critic_params,optax.adam(learning_rate=3e-4))
-        tmp = partial(update_one_critic,agent=agent,transitions=transitions,num_steps=num_steps)
-        new_critics = jax.vmap(tmp,in_axes=(0,0))(critics,idxs)
+        new_critics = jax.vmap(update_one_critic,in_axes=(0,0,None,None,None))(critics,idxs,agent,transitions,num_steps)
         agent = agent.replace(rng=new_rng,critic=new_critics)
         
         return agent,{}
@@ -183,12 +183,13 @@ class SACAgent(flax.struct.PyTreeNode):
             dist = agent.actor(observations, params=actor_params)
             actions, log_probs = dist.sample_and_log_prob(seed=curr_key)
             
+            def call_one_critic(observations,actions,params):
+                return agent.critic(observations,actions,params=params)
             
-            call_one_critic = lambda observations,actions,params : agent.critic(observations,actions,params=params)
             q_r_all,q_e_all = jax.vmap(call_one_critic,in_axes=(None,None,0))(observations, actions,agent.critic.params)##critic_update_info
-            
             q_weights = jax.nn.softmax(R2,axis=0)
             q_r = jnp.sum(q_weights.reshape(-1,1)*q_r_all,axis=0)
+            
             q_e = jnp.mean(q_e_all,axis=0)
             q = q_r + q_e
             
@@ -206,7 +207,8 @@ class SACAgent(flax.struct.PyTreeNode):
                 entropy = -1 * ((discounts*log_probs)/(discounts.sum())).sum()
             else : 
                 entropy = -1 * log_probs/masks.sum()
-        
+            
+         
             return actor_loss, {
                 'actor_loss': actor_loss,
                 'entropy': entropy,
@@ -223,15 +225,16 @@ class SACAgent(flax.struct.PyTreeNode):
                 'entropy_diff': entropy_diff,
             }
 
-        loss_fn = partial(actor_loss_fn,R2=R2)
-        new_actor, actor_info = agent.actor.apply_loss_fn(loss_fn=loss_fn, has_aux=True)
-        temp_loss_fn = functools.partial(temp_loss_fn, entropy=actor_info['entropy'], target_entropy=agent.config['target_entropy'])
-        new_temp, temp_info = agent.temp.apply_loss_fn(loss_fn=temp_loss_fn, has_aux=True)
+        
+        new_actor, actor_info = agent.actor.apply_loss_fn(actor_loss_fn,True,R2)
+        new_temp, temp_info = agent.temp.apply_loss_fn(temp_loss_fn,True,actor_info['entropy'], agent.config['target_entropy'])
         new_temp.params["log_temp"]=jnp.clip(new_temp.params["log_temp"],1e-6,1)
         agent = agent.replace(rng=new_rng, temp=new_temp)
-        new_actor, actor_info = agent.actor.apply_loss_fn(loss_fn=loss_fn, has_aux=True)
+        new_actor, actor_info = agent.actor.apply_loss_fn(actor_loss_fn,True,R2)
         
-        return agent.replace(rng=new_rng, actor=new_actor), {**actor_info, **temp_info}
+        return agent.replace(rng=new_rng, actor=new_actor), {**actor_info}
+        
+        
 
     @jax.jit
     def sample_actions(agent,   
@@ -279,7 +282,8 @@ def create_learner(
         critics = jax.vmap(TrainState.create,in_axes=(None,0,None))(critic_def,critic_params,optax.adam(learning_rate=3e-4))
 
         actor_params = actor_def.init(actor_key, observations)['params']
-        actor = TrainState.create(actor_def, actor_params, tx=optax.rmsprop(learning_rate=3e-4))
+        #actor = TrainState.create(actor_def, actor_params, tx=optax.sgd(learning_rate=1e-3))
+        actor = TrainState.create(actor_def, actor_params, tx=optax.adam(learning_rate=3e-4,b1=0.99))
         
         temp_def = Temperature()
         temp_params = temp_def.init(rng)['params']
@@ -342,7 +346,7 @@ def train(args):
 
     env = EpisodeMonitor(gym.make(args.env_name,max_episode_steps=args.max_episode_steps))
     eval_env = EpisodeMonitor(gym.make(args.env_name))
-    wandb_run = setup_wandb(**wandb_config)
+    #wandb_run = setup_wandb(**wandb_config)
 
     example_transition = dict(
         observations=env.observation_space.sample(),
@@ -402,7 +406,9 @@ def train(args):
                 transitions = replay_buffer.get_all()
                 tmp = partial(jax.random.choice,a=replay_buffer.size, shape=(5000,256), replace=True)
                 idxs = jax.vmap(tmp)(jax.random.split(agent.rng, args.num_critics))
-                agent, critic_update_info = agent.update_many_critics(transitions,idxs,5000,R2)
+                with jax.log_compiles(True):
+                    agent, critic_update_info = agent.update_many_critics(transitions,idxs,5000,R2)
+                critic_update_info = {}
 
                 ### Update critic weights ## 
                 if len(policy_rollouts)>=10 and args.adaptive_critics:   
@@ -411,8 +417,11 @@ def train(args):
                     R2,bias = evaluate_many_critics(agent,policy_rollout.policy_return,flattened_rollouts)
 
                 ### Update actor ###
-                actor_batch = actor_buffer.get_all()      
+                actor_batch = actor_buffer.get_all()    
+                
+                #with jax.log_compiles(True):
                 agent, actor_update_info = agent.update_actor(actor_batch,R2)    
+                    
                 update_info = {**critic_update_info, **actor_update_info}
                 
                 ### Log training info ###
@@ -434,14 +443,14 @@ def train(args):
                 tmp = jnp.stack(list)
                 train_metrics['training/noise'] = jnp.std(tmp,axis=0).mean()
                 
-                wandb.log(train_metrics, step=int(i),commit=False)
-                wandb.log(exploration_metrics, step=int(i),commit=False)
+#                wandb.log(train_metrics, step=int(i),commit=False)
+                #wandb.log(exploration_metrics, step=int(i),commit=False)
                 if len(policy_rollouts)>=10:
                     
                     R2_train_info = {'R2/max': jnp.max(R2),'R2/bias': bias[jnp.argmax(R2)],
                                     "R2/histogram": wandb.Histogram(jnp.clip(R2,a_min=-1,a_max=1)),
                                     }
-                    wandb.log(R2_train_info, step=int(i),commit=False)
+                    #wandb.log(R2_train_info, step=int(i),commit=False)
                 
                 ### Log evaluation info ###
                 if unlogged_steps >= log_interval:
@@ -457,12 +466,12 @@ def train(args):
                     policy_fn = partial(supply_rng(agent.sample_actions), temperature=0.0)
                     eval_info = evaluate(policy_fn, eval_env, num_episodes=eval_episodes)
                     eval_metrics = {f'evaluation/{k}': v for k, v in eval_info.items()}
-                    wandb.log(eval_metrics, step=int(i),commit=True)
+                    #wandb.log(eval_metrics, step=int(i),commit=True)
                 
                     
                     unlogged_steps = 0
     
-    wandb_run.finish()
+    #wandb_run.finish()
     
 
 train(args)

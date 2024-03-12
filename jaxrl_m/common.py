@@ -138,24 +138,36 @@ class TrainState(flax.struct.PyTreeNode):
             **kwargs,
         )
 
-    def apply_loss_fn(self, *, loss_fn, pmap_axis=None, has_aux=False):
+    def apply_loss_fn(self, loss_fn, has_aux=False,*args, **kwargs):
         """
         Takes a gradient step towards minimizing `loss_fn`. Internally, this calls
         `jax.grad` followed by `TrainState.apply_gradients`. If pmap_axis is provided,
         additionally it averages gradients (and info) across devices before performing update.
         """
         if has_aux:
-            grads, info = jax.grad(loss_fn, has_aux=has_aux)(self.params)
-            if pmap_axis is not None:
-                grads = jax.lax.pmean(grads, axis_name=pmap_axis)
-                info = jax.lax.pmean(info, axis_name=pmap_axis)
+            grads, info = jax.grad(loss_fn, has_aux=has_aux)(self.params, *args, **kwargs)
             return self.apply_gradients(grads=grads), info
 
         else:
-            grads = jax.grad(loss_fn, has_aux=has_aux)(self.params)
-            if pmap_axis is not None:
-                grads = jax.lax.pmean(grads, axis_name=pmap_axis)
+            #grads = jax.grad(loss_fn, has_aux=has_aux)(self.params, *args, **kwargs)
+            grads = jax.grad(loss_fn, has_aux=has_aux)(self.params, *args, **kwargs)
             return self.apply_gradients(grads=grads)
+    
+    
+    # def apply_loss_fn(self,*,loss_fn, has_aux=False):
+    #     """
+    #     Takes a gradient step towards minimizing `loss_fn`. Internally, this calls
+    #     `jax.grad` followed by `TrainState.apply_gradients`. If pmap_axis is provided,
+    #     additionally it averages gradients (and info) across devices before performing update.
+    #     """
+    #     if has_aux:
+    #         grads, info = jax.grad(loss_fn, has_aux=has_aux)(self.params)
+    #         return self.apply_gradients(grads=grads), info
+
+    #     else:
+    #         grads = jax.grad(loss_fn, has_aux=has_aux)(self.params)
+    #         return self.apply_gradients(grads=grads)
+        
     
     def __getattr__(self, name):
         """
@@ -168,6 +180,10 @@ class TrainState(flax.struct.PyTreeNode):
         """
         method = getattr(self.model_def, name)
         return functools.partial(self.__call__, method=method)
+    
+
+      
+
 
 
 class CodeTimer:
@@ -206,3 +222,4 @@ def compute_dormant(agent,observations,percentage):
     percent_dormant = jnp.sum(dormant)/jnp.sum(total)
         
     return percent_dormant
+

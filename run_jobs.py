@@ -16,10 +16,10 @@ def str2bool(v):
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--seed',type=int,default=42) 
-parser.add_argument('--env_name',type=str,default="Walker2d-v5") 
-parser.add_argument('--project_name',type=str,default="99_runs") 
+parser.add_argument('--env_name',type=str,default="Humanoid-v4") 
+parser.add_argument('--project_name',type=str,default="debug_humanoid") 
 parser.add_argument('--gamma',type=float,default=0.99)
-parser.add_argument('--max_steps',type=int,default=1_000_000) 
+parser.add_argument('--max_steps',type=int,default=5_000_000) 
 parser.add_argument('--num_rollouts',type=int,default=5) 
 parser.add_argument('--num_critics',type=int,default=5) 
 parser.add_argument('--adaptive_critics',type=str2bool,default=True) 
@@ -48,7 +48,7 @@ for cfg in configs :
     --seed  {cfg[0]} --env_name {cfg[1]} --project_name {cfg[2]} \
     --gamma {cfg[3]} --max_steps {cfg[4]} --num_rollouts {cfg[5]} \
     --num_critics {cfg[6]} --adaptive_critics {cfg[7]} --discount_entropy {cfg[8]} \
-    --discount_actor {cfg[9]} --max_episode_steps {cfg[10]} \
+    --discount_actor {cfg[9]} --entropy_coeff {cfg[10]} --max_episode_steps {cfg[11]} \
     >./null 2>&1 & '
     
     print(command)

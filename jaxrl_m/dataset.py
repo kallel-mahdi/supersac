@@ -118,9 +118,10 @@ class ActorReplayBuffer(ReplayBuffer):
     
     def get_all(self):
         
-        batch = jax.tree_map(lambda x: x[:self.size], self._dict)
-        batch = jax.tree_map(lambda x: jnp.pad(x, ((0, self.max_size - self.size),) + ((0, 0),) * (x.ndim - 1), mode='constant'), batch)
-      
-        return jax.tree_map(lambda x: jax.device_put(x), batch)
-    
+        
+            batch = jax.tree_map(lambda x: x[:self.size], self._dict)
+            batch = jax.tree_map(lambda x: jnp.pad(x, ((0, self.max_size - self.size),) + ((0, 0),) * (x.ndim - 1), mode='constant'), batch)
+        
+            return jax.tree_map(lambda x: jax.device_put(x), batch)
+        
         

@@ -149,26 +149,9 @@ class TrainState(flax.struct.PyTreeNode):
             return self.apply_gradients(grads=grads), info
 
         else:
-            #grads = jax.grad(loss_fn, has_aux=has_aux)(self.params, *args, **kwargs)
             grads = jax.grad(loss_fn, has_aux=has_aux)(self.params, *args, **kwargs)
             return self.apply_gradients(grads=grads)
-    
-    
-    # def apply_loss_fn(self,*,loss_fn, has_aux=False):
-    #     """
-    #     Takes a gradient step towards minimizing `loss_fn`. Internally, this calls
-    #     `jax.grad` followed by `TrainState.apply_gradients`. If pmap_axis is provided,
-    #     additionally it averages gradients (and info) across devices before performing update.
-    #     """
-    #     if has_aux:
-    #         grads, info = jax.grad(loss_fn, has_aux=has_aux)(self.params)
-    #         return self.apply_gradients(grads=grads), info
-
-    #     else:
-    #         grads = jax.grad(loss_fn, has_aux=has_aux)(self.params)
-    #         return self.apply_gradients(grads=grads)
-        
-    
+ 
     def __getattr__(self, name):
         """
             Syntax sugar for calling methods of the model_def directly.
@@ -198,28 +181,28 @@ class CodeTimer:
         print('Code block' + self.name + ' took: ' + str(self.took) + ' s')
 
 
-def compute_dormant_layer(activations, percentage):
+# def compute_dormant_layer(activations, percentage):
     
 
-    mean_output = jnp.abs(activations).mean(axis=0)
-    avg_neuron_output = mean_output.mean()
-    dormant_indices = (mean_output < avg_neuron_output *
-                        percentage)
-    total_neurons = activations.shape[-1]
-    dormant_neurons = jnp.sum(dormant_indices).item()
+#     mean_output = jnp.abs(activations).mean(axis=0)
+#     avg_neuron_output = mean_output.mean()
+#     dormant_indices = (mean_output < avg_neuron_output *
+#                         percentage)
+#     total_neurons = activations.shape[-1]
+#     dormant_neurons = jnp.sum(dormant_indices).item()
     
-    return (dormant_neurons,total_neurons) 
+#     return (dormant_neurons,total_neurons) 
 
-def compute_dormant(agent,observations,percentage):
+# def compute_dormant(agent,observations,percentage):
 
-    params = agent.actor.params
-    filter_dense = lambda mdl, method_name: isinstance(mdl, nn.Dense)
-    _,activations = agent.actor(observations, params=params,capture_intermediates=filter_dense)
-    activations = jax.tree_leaves(activations)
-    tmp = [compute_dormant_layer(x,percentage) for x in activations]
-    dormant = sum([x[0] for x in tmp])
-    total = sum([x[1] for x in tmp])
-    percent_dormant = jnp.sum(dormant)/jnp.sum(total)
+#     params = agent.actor.params
+#     filter_dense = lambda mdl, method_name: isinstance(mdl, nn.Dense)
+#     _,activations = agent.actor(observations, params=params,capture_intermediates=filter_dense)
+#     activations = jax.tree_leaves(activations)
+#     tmp = [compute_dormant_layer(x,percentage) for x in activations]
+#     dormant = sum([x[0] for x in tmp])
+#     total = sum([x[1] for x in tmp])
+#     percent_dormant = jnp.sum(dormant)/jnp.sum(total)
         
-    return percent_dormant
+#     return percent_dormant
 

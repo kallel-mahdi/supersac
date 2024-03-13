@@ -3,6 +3,8 @@ from jaxrl_m.rollout import PolicyRollout
 import jax
 import jax.numpy as jnp
 from functools import partial
+import jax.tree_util
+
 
 def f(anc_agent,obs,actor_params,critic_params,seed):
 
@@ -55,8 +57,6 @@ def evaluate_one_critic(anc_critic_params,
     return R2,bias
 
 #@jax.jit
-import jax.tree_util
-
 def evaluate_many_critics(anc_agent, anc_return, policy_rollouts):
     
     seed = anc_agent.rng
@@ -67,6 +67,8 @@ def evaluate_many_critics(anc_agent, anc_return, policy_rollouts):
                 anc_return=anc_return,
                 policy_rollouts=policy_rollouts, seed=seed)
 
+    ### Evaluating over all critics causes O.O.M error
+    ### We do it sequentially as it's not a bottleneck
     R2_l, bias_l = [], []
     for i in range(num_critics):
         critic_params = jax.tree_map(lambda x: x[i], anc_critic_params)
@@ -76,5 +78,7 @@ def evaluate_many_critics(anc_agent, anc_return, policy_rollouts):
     
     R2 = jnp.vstack(R2_l)
     bias = jnp.vstack(bias_l)
+    
+    #R2, bias = jax.vmap(tmp)(anc_critic_params)
     
     return R2, bias

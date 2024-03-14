@@ -31,7 +31,7 @@ args = parser.parse_args()
 ##############################
 
 np.random.seed(42)
-seeds = list(np.random.randint(0,1e6,10))
+seeds = list(np.random.randint(0,1e6,5))
 configs = itertools.product(seeds,[args.env_name],[args.project_name],
                             [args.gamma],[args.max_steps],[5],
                             [args.num_critics],[args.adaptive_critics],[args.discount_entropy],[args.discount_actor],[args.entropy_coeff],[args.max_episode_steps])

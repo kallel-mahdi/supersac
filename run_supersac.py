@@ -43,14 +43,14 @@ os.environ['TF_CUDNN_DETERMINISTIC'] = '1'
 ##############################
 parser = argparse.ArgumentParser()
 parser.add_argument('--seed',type=int,default=42) 
-parser.add_argument('--env_name',type=str,default="Humanoid-v4") 
-parser.add_argument('--project_name',type=str,default="delete") 
+parser.add_argument('--env_name',type=str,default="Hopper-v4") 
+parser.add_argument('--project_name',type=str,default="995_1e3") 
 parser.add_argument('--gamma',type=float,default=0.995)
-parser.add_argument('--max_steps',type=int,default=2_000_000) 
+parser.add_argument('--max_steps',type=int,default=1_000_000) 
 parser.add_argument('--num_rollouts',type=int,default=5) 
 parser.add_argument('--num_critics',type=int,default=5) 
 parser.add_argument('--adaptive_critics',type=str2bool,default=True) 
-parser.add_argument('--discount_entropy',type=str2bool,default=True) 
+parser.add_argument('--discount_entropy',type=str2bool,default=False) 
 parser.add_argument('--discount_actor',type=str2bool,default=True) 
 parser.add_argument('--max_episode_steps',type=int,default=1000) 
 parser.add_argument('--entropy_coeff',type=float,default=1.) 
@@ -189,12 +189,12 @@ class SACAgent(flax.struct.PyTreeNode):
             if agent.config['discount_actor']:
                 actor_loss = (discounts*(log_probs * agent.temp() - q)).sum()/discounts.sum()
             else :
-                actor_loss = (log_probs * agent.temp() - q)/masks.sum()
+                actor_loss = (log_probs * agent.temp() - q).sum()/masks.sum()
             
             if agent.config['discount_entropy']:
                 entropy = -1 * ((discounts*log_probs)/(discounts.sum())).sum()
             else : 
-                entropy = -1 * log_probs/masks.sum()
+                entropy = -1 * log_probs.sum()/masks.sum()
             
             return actor_loss, {
                 'actor_loss': actor_loss,
@@ -244,7 +244,7 @@ def create_learner(
                 discount_entropy,
                 entropy_coeff,
                 
-                actor_lr: float = 3e-4,
+                actor_lr: float = 1e-3,
                 critic_lr: float = 3e-4,
                 temp_lr: float =1e-3,## Test
                 hidden_dims: Sequence[int] = (256, 256),
@@ -315,7 +315,7 @@ def train(args):
     eval_episodes=10
     batch_size = 256
     max_steps = args.max_steps
-    start_steps = 10000                 
+    start_steps = 10000                
     log_interval = 5000
 
     wandb_config = {
@@ -360,7 +360,7 @@ def train(args):
     exploration_rng = jax.random.PRNGKey(0)
     i = 0
     unlogged_steps = 0
-    policy_rollouts = deque([], maxlen=20)
+    policy_rollouts = deque([], maxlen=30)
     warmup = True
     R2,bias = jnp.ones(args.num_critics),jnp.zeros(args.num_critics)
 
@@ -398,7 +398,7 @@ def train(args):
                         
                     ### Update critic weights ## 
                     logging.debug('update critic weights')
-                    if len(policy_rollouts)>=20 and args.adaptive_critics:   
+                    if len(policy_rollouts)>=30 and args.adaptive_critics:   
                     
                         flattened_rollouts = flatten_rollouts(policy_rollouts)
                         R2,bias = evaluate_many_critics(agent,policy_rollout.policy_return,flattened_rollouts)

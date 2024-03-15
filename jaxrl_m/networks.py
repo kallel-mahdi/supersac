@@ -28,15 +28,14 @@ import jax.numpy as jnp
 ###############################
 
 
-# def default_init(scale: Optional[float] = 1.0):
-#     return nn.initializers.variance_scaling(scale, "fan_avg", "uniform")
-
-# def default_actor_init(scale: Optional[float] = 0.01):
-#     return nn.initializers.orthogonal(scale)
 
 def default_init(scale: Optional[float] = jnp.sqrt(2.0)):
 
     return nn.initializers.orthogonal(scale)
+
+# def default_init(scale: Optional[float] = 1.0):
+#     return nn.initializers.variance_scaling(scale, "fan_avg", "uniform")
+
 
 class MLP(nn.Module):
     hidden_dims: Sequence[int]
@@ -64,27 +63,9 @@ class MLP(nn.Module):
 
 
 
-# class Critic(nn.Module):
-#     hidden_dims: Sequence[int]
-#     activations: Callable[[jnp.ndarray], jnp.ndarray] = nn.tanh
-#     use_layer_norm: bool = True
-#     scale_final: Optional[float] = None
-
-#     @nn.compact
-#     def __call__(self, observations: jnp.ndarray, actions: jnp.ndarray,
-#                 *args,**kwargs) -> jnp.ndarray:
-#         inputs = jnp.concatenate([observations, actions], -1)
-#         critic = MLP((*self.hidden_dims, 1), activations=self.activations,
-#                      use_layer_norm=self.use_layer_norm)(inputs,*args, **kwargs)
-        
-#         #critic = nn.tanh(critic) ## Bonus
-#         return jnp.squeeze(critic, -1)
-
-
 
 class Critic(nn.Module):
     hidden_dims: Sequence[int]
-    activations: Callable[[jnp.ndarray], jnp.ndarray] = nn.tanh
     use_layer_norm: bool = True
     scale_final: Optional[float] = None
 
@@ -92,16 +73,15 @@ class Critic(nn.Module):
     def __call__(self, observations: jnp.ndarray, actions: jnp.ndarray,
                 *args,**kwargs) -> jnp.ndarray:
         inputs = jnp.concatenate([observations, actions], -1)
-        critic = MLP((*self.hidden_dims, 2), activations=self.activations,
+        critic = MLP((*self.hidden_dims, 2),
                      use_layer_norm=self.use_layer_norm)(inputs,*args, **kwargs)
-        #print(f'critic shape: {critic.shape}')
+        
         return critic[:,0] , critic[:,1]
     
     
 
 class OriginalCritic(nn.Module):
     hidden_dims: Sequence[int]
-    activations: Callable[[jnp.ndarray], jnp.ndarray] = nn.tanh
     use_layer_norm: bool = True
     scale_final: Optional[float] = None
 
@@ -109,9 +89,9 @@ class OriginalCritic(nn.Module):
     def __call__(self, observations: jnp.ndarray, actions: jnp.ndarray,
                 *args,**kwargs) -> jnp.ndarray:
         inputs = jnp.concatenate([observations, actions], -1)
-        critic = MLP((*self.hidden_dims, 2), activations=self.activations,
+        critic = MLP((*self.hidden_dims, 2),
                      use_layer_norm=self.use_layer_norm)(inputs,*args, **kwargs)
-        #print(f'critic shape: {critic.shape}')
+        
         return critic[:,0] , critic[:,1]
 
 
@@ -153,7 +133,6 @@ class Policy(nn.Module):
     ) -> distrax.Distribution:
         outputs = MLP(
             self.hidden_dims,
-            activations=nn.tanh,### new
             activate_final=True,
         )(observations)
 

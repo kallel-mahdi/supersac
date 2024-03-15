@@ -128,11 +128,6 @@ def rollout_policy2(agent,env,exploration_rng,
             last_done = n_steps
             
 
-    
-    
-    
-    
-    
     observations = observations[:last_done]
     observations = jnp.pad(observations, ((0, max_steps - len(observations)), (0, 0)), mode='constant', constant_values=0)
     

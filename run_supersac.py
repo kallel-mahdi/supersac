@@ -43,17 +43,20 @@ os.environ['TF_CUDNN_DETERMINISTIC'] = '1'
 ##############################
 parser = argparse.ArgumentParser()
 parser.add_argument('--seed',type=int,default=42) 
-parser.add_argument('--env_name',type=str,default="Hopper-v4") 
+parser.add_argument('--env_name',type=str,default="Humanoid-v4") 
 parser.add_argument('--project_name',type=str,default="995_1e3") 
 parser.add_argument('--gamma',type=float,default=0.995)
 parser.add_argument('--max_steps',type=int,default=1_000_000) 
 parser.add_argument('--num_rollouts',type=int,default=5) 
 parser.add_argument('--num_critics',type=int,default=5) 
 parser.add_argument('--adaptive_critics',type=str2bool,default=True) 
-parser.add_argument('--discount_entropy',type=str2bool,default=False) 
+parser.add_argument('--discount_entropy',type=str2bool,default=True) 
 parser.add_argument('--discount_actor',type=str2bool,default=True) 
 parser.add_argument('--max_episode_steps',type=int,default=1000) 
 parser.add_argument('--entropy_coeff',type=float,default=1.) 
+parser.add_argument('--actor_lr',type=float,default=3e-4) 
+parser.add_argument('--temp_lr',type=float,default=1e-3) 
+
 
 
 args = parser.parse_args()
@@ -94,6 +97,16 @@ class Temperature(nn.Module):
                               init_fn=lambda key: jnp.full(
                                   (), self.initial_temperature))
         return jnp.abs(log_temp)
+
+# class Temperature(nn.Module):
+#     initial_temperature: float = 1e-2
+
+#     @nn.compact
+#     def __call__(self) -> jnp.ndarray:
+#         log_temp = self.param('log_temp',
+#                               init_fn=lambda key: jnp.full(
+#                                   (), jnp.log(self.initial_temperature)))
+#         return jnp.exp(log_temp)
         
 
 class SACAgent(flax.struct.PyTreeNode):
@@ -244,7 +257,7 @@ def create_learner(
                 discount_entropy,
                 entropy_coeff,
                 
-                actor_lr: float = 1e-3,
+                actor_lr: float = 3e-4,
                 critic_lr: float = 3e-4,
                 temp_lr: float =1e-3,## Test
                 hidden_dims: Sequence[int] = (256, 256),
@@ -267,14 +280,16 @@ def create_learner(
 
         actor_params = actor_def.init(actor_key, observations)['params']
         actor = TrainState.create(actor_def, actor_params, tx=optax.rmsprop(learning_rate=actor_lr))
+        #actor = TrainState.create(actor_def, actor_params, tx=optax.sgd(learning_rate=actor_lr))
+        
         
         temp_def = Temperature()
         temp_params = temp_def.init(rng)['params']
         temp = TrainState.create(temp_def, temp_params, tx=optax.sgd(learning_rate=temp_lr))
+        #temp = TrainState.create(temp_def, temp_params, tx=optax.rmsprop(learning_rate=temp_lr))
         
         if target_entropy is None:
             target_entropy = -entropy_coeff*action_dim
-
         config = flax.core.FrozenDict(dict(
             discount=discount,
             target_entropy=target_entropy,
@@ -325,7 +340,8 @@ def train(args):
         }
     
 
-    env = EpisodeMonitor(gym.make(args.env_name,max_episode_steps=args.max_episode_steps))
+    env = EpisodeMonitor(gym.make(args.env_name,max_episode_steps=args.max_episode_steps,healthy_reward=0.5))
+    #env = EpisodeMonitor(gym.make(args.env_name,max_episode_steps=args.max_episode_steps))
     eval_env = EpisodeMonitor(gym.make(args.env_name))
     wandb_run = setup_wandb(**wandb_config)
 
@@ -351,6 +367,8 @@ def train(args):
                     discount_entropy=args.discount_entropy,
                     num_critics= args.num_critics,
                     entropy_coeff=args.entropy_coeff,
+                    temp_lr=args.temp_lr,
+                    actor_lr=args.actor_lr,
                     hidden_dims=hidden_dims,
                     #**FLAGS.config
                     )
@@ -423,15 +441,19 @@ def train(args):
                     
                     ### Log noise ###
                     observations = actor_batch['observations']
+                    masks = actor_batch['masks']
+                    observations = observations[masks!=0]
                     dist = agent.actor(observations)
                     list = []
                     curr_key = agent.rng
                     for _ in range(10):
                         actions, _ = dist.sample_and_log_prob(seed=curr_key)
+                        
                         list.append(actions)
                         curr_key,_ = jax.random.split(curr_key)
                         
                     tmp = jnp.stack(list)
+                    
                     train_metrics['training/noise'] = jnp.std(tmp,axis=0).mean()
                     #######################################
                     

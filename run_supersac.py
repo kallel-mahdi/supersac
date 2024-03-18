@@ -43,19 +43,19 @@ os.environ['TF_CUDNN_DETERMINISTIC'] = '1'
 ##############################
 parser = argparse.ArgumentParser()
 parser.add_argument('--seed',type=int,default=42) 
-parser.add_argument('--env_name',type=str,default="Humanoid-v4") 
-parser.add_argument('--project_name',type=str,default="995_1e3") 
-parser.add_argument('--gamma',type=float,default=0.995)
+parser.add_argument('--env_name',type=str,default="HalfCheetah-v4") 
+parser.add_argument('--project_name',type=str,default="delete") 
+parser.add_argument('--gamma',type=float,default=0.99)
 parser.add_argument('--max_steps',type=int,default=1_000_000) 
-parser.add_argument('--num_rollouts',type=int,default=5) 
+parser.add_argument('--num_rollouts',type=int,default=10) 
 parser.add_argument('--num_critics',type=int,default=5) 
 parser.add_argument('--adaptive_critics',type=str2bool,default=True) 
 parser.add_argument('--discount_entropy',type=str2bool,default=True) 
 parser.add_argument('--discount_actor',type=str2bool,default=True) 
-parser.add_argument('--max_episode_steps',type=int,default=1000) 
+parser.add_argument('--max_episode_steps',type=int,default=500) 
 parser.add_argument('--entropy_coeff',type=float,default=1.) 
 parser.add_argument('--actor_lr',type=float,default=3e-4) 
-parser.add_argument('--temp_lr',type=float,default=1e-3) 
+parser.add_argument('--temp_lr',type=float,default=3e-4) 
 
 
 
@@ -280,13 +280,13 @@ def create_learner(
 
         actor_params = actor_def.init(actor_key, observations)['params']
         actor = TrainState.create(actor_def, actor_params, tx=optax.rmsprop(learning_rate=actor_lr))
-        #actor = TrainState.create(actor_def, actor_params, tx=optax.sgd(learning_rate=actor_lr))
+        #actor = TrainState.create(actor_def, actor_params, tx=optax.adam(learning_rate=actor_lr,b1=0.9))
         
         
         temp_def = Temperature()
         temp_params = temp_def.init(rng)['params']
-        temp = TrainState.create(temp_def, temp_params, tx=optax.sgd(learning_rate=temp_lr))
-        #temp = TrainState.create(temp_def, temp_params, tx=optax.rmsprop(learning_rate=temp_lr))
+        #temp = TrainState.create(temp_def, temp_params, tx=optax.sgd(learning_rate=temp_lr))
+        temp = TrainState.create(temp_def, temp_params, tx=optax.rmsprop(learning_rate=temp_lr))
         
         if target_entropy is None:
             target_entropy = -entropy_coeff*action_dim
@@ -340,7 +340,7 @@ def train(args):
         }
     
 
-    env = EpisodeMonitor(gym.make(args.env_name,max_episode_steps=args.max_episode_steps,healthy_reward=0.5))
+    env = EpisodeMonitor(gym.make(args.env_name,max_episode_steps=args.max_episode_steps))
     #env = EpisodeMonitor(gym.make(args.env_name,max_episode_steps=args.max_episode_steps))
     eval_env = EpisodeMonitor(gym.make(args.env_name))
     wandb_run = setup_wandb(**wandb_config)
@@ -354,7 +354,7 @@ def train(args):
         discounts=1.0,
     )
 
-    replay_buffer = ReplayBuffer.create(example_transition, size=int(200_000))
+    replay_buffer = ReplayBuffer.create(example_transition, size=int(100_000))
     actor_buffer = ActorReplayBuffer.create(example_transition, size=int(10e3))
 
     agent = create_learner(args.seed,
@@ -378,7 +378,7 @@ def train(args):
     exploration_rng = jax.random.PRNGKey(0)
     i = 0
     unlogged_steps = 0
-    policy_rollouts = deque([], maxlen=30)
+    policy_rollouts = deque([], maxlen=20)
     warmup = True
     R2,bias = jnp.ones(args.num_critics),jnp.zeros(args.num_critics)
 
@@ -394,8 +394,8 @@ def train(args):
                                                                         agent,env,exploration_rng,
                                                                         replay_buffer,actor_buffer,warmup=warmup,
                                                                         num_rollouts=args.num_rollouts,random=False,
-                                                                        discount = args.gamma,
-                                                                        )
+                                                                        discount = args.gamma,max_length=args.max_episode_steps)
+                                                                        
                 if not warmup : policy_rollouts.append(policy_rollout)
                 unlogged_steps += num_steps
                 i+=num_steps
@@ -416,7 +416,7 @@ def train(args):
                         
                     ### Update critic weights ## 
                     logging.debug('update critic weights')
-                    if len(policy_rollouts)>=30 and args.adaptive_critics:   
+                    if len(policy_rollouts)>=20 and args.adaptive_critics:   
                     
                         flattened_rollouts = flatten_rollouts(policy_rollouts)
                         R2,bias = evaluate_many_critics(agent,policy_rollout.policy_return,flattened_rollouts)

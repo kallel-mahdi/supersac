@@ -20,13 +20,13 @@ class PolicyRollout:
 
 def rollout_policy(agent,env,exploration_rng,
                    replay_buffer=None,actor_buffer=None,
-                   warmup=False,num_rollouts=5,random=False,discount=0.99):
+                   warmup=False,num_rollouts=5,random=False,discount=0.99,max_length=500):
     
     if actor_buffer is not None:
         actor_buffer = actor_buffer.reset()
     obs,_ = env.reset()  
     n_steps,n_rollouts,episode_step,disc,mask = 0,0,0,1.,1.
-    max_steps = num_rollouts*1000
+    max_steps = num_rollouts*max_length
     observations,disc_masks,rewards = np.zeros((max_steps,obs.shape[0])),np.zeros((max_steps,)),np.zeros((max_steps,))
     policy_returns = np.zeros((num_rollouts,))
     
@@ -51,9 +51,9 @@ def rollout_policy(agent,env,exploration_rng,
         if actor_buffer is not None:
             actor_buffer.add_transition(transition)
     
-        observations[1000*n_rollouts+episode_step] = obs
-        disc_masks[1000*n_rollouts+episode_step] = disc
-        rewards[1000*n_rollouts+episode_step] = reward
+        observations[max_length*n_rollouts+episode_step] = obs
+        disc_masks[max_length*n_rollouts+episode_step] = disc
+        rewards[max_length*n_rollouts+episode_step] = reward
         
         obs = next_obs
         disc *= (discount*mask)
@@ -61,7 +61,7 @@ def rollout_policy(agent,env,exploration_rng,
         n_steps += 1
         
         if (done or truncated) :
-            policy_returns[n_rollouts] = (disc_masks[1000*n_rollouts:1000*(n_rollouts+1)]*rewards[1000*n_rollouts:1000*(n_rollouts+1)]).sum()
+            policy_returns[n_rollouts] = (disc_masks[max_length*n_rollouts:max_length*(n_rollouts+1)]*rewards[max_length*n_rollouts:max_length*(n_rollouts+1)]).sum()
             obs,_= env.reset()
             n_rollouts += 1
             episode_step = 0

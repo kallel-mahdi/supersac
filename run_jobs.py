@@ -42,7 +42,7 @@ for cfg in configs :
     import random
 
     # Add random time pause
-    time.sleep(random.uniform(0.1,3))
+    #time.sleep(random.uniform(0.1,3))
 
     command = f'sbatch job_file.sh\
     --seed  {cfg[0]} --env_name {cfg[1]} --project_name {cfg[2]} \

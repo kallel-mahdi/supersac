@@ -43,20 +43,19 @@ os.environ['TF_CUDNN_DETERMINISTIC'] = '1'
 ##############################
 parser = argparse.ArgumentParser()
 parser.add_argument('--seed',type=int,default=42) 
-parser.add_argument('--env_name',type=str,default="HalfCheetah-v4") 
+parser.add_argument('--env_name',type=str,default="Hopper-v5") 
 parser.add_argument('--project_name',type=str,default="delete") 
-parser.add_argument('--gamma',type=float,default=0.99)
+parser.add_argument('--gamma',type=float,default=0.995)
 parser.add_argument('--max_steps',type=int,default=1_000_000) 
-parser.add_argument('--num_rollouts',type=int,default=10) 
+parser.add_argument('--num_rollouts',type=int,default=5) 
 parser.add_argument('--num_critics',type=int,default=5) 
 parser.add_argument('--adaptive_critics',type=str2bool,default=True) 
 parser.add_argument('--discount_entropy',type=str2bool,default=True) 
 parser.add_argument('--discount_actor',type=str2bool,default=True) 
-parser.add_argument('--max_episode_steps',type=int,default=500) 
+parser.add_argument('--max_episode_steps',type=int,default=1000) 
 parser.add_argument('--entropy_coeff',type=float,default=1.) 
-parser.add_argument('--actor_lr',type=float,default=3e-4) 
-parser.add_argument('--temp_lr',type=float,default=3e-4) 
-
+parser.add_argument('--actor_lr',type=float,default=1e-3) 
+parser.add_argument('--temp_lr',type=float,default=1e-3) 
 
 
 args = parser.parse_args()
@@ -331,7 +330,7 @@ def train(args):
     batch_size = 256
     max_steps = args.max_steps
     start_steps = 10000                
-    log_interval = 5000
+    log_interval = 10000
 
     wandb_config = {
         'project': args.project_name,
@@ -340,7 +339,7 @@ def train(args):
         }
     
 
-    env = EpisodeMonitor(gym.make(args.env_name,max_episode_steps=args.max_episode_steps))
+    env = EpisodeMonitor(gym.make(args.env_name,max_episode_steps=args.max_episode_steps,healthy_reward=0.75))
     #env = EpisodeMonitor(gym.make(args.env_name,max_episode_steps=args.max_episode_steps))
     eval_env = EpisodeMonitor(gym.make(args.env_name))
     wandb_run = setup_wandb(**wandb_config)
@@ -354,7 +353,7 @@ def train(args):
         discounts=1.0,
     )
 
-    replay_buffer = ReplayBuffer.create(example_transition, size=int(100_000))
+    replay_buffer = ReplayBuffer.create(example_transition, size=int(1e5))
     actor_buffer = ActorReplayBuffer.create(example_transition, size=int(10e3))
 
     agent = create_learner(args.seed,
@@ -378,7 +377,7 @@ def train(args):
     exploration_rng = jax.random.PRNGKey(0)
     i = 0
     unlogged_steps = 0
-    policy_rollouts = deque([], maxlen=20)
+    policy_rollouts = deque([], maxlen=25)
     warmup = True
     R2,bias = jnp.ones(args.num_critics),jnp.zeros(args.num_critics)
 
@@ -416,7 +415,7 @@ def train(args):
                         
                     ### Update critic weights ## 
                     logging.debug('update critic weights')
-                    if len(policy_rollouts)>=20 and args.adaptive_critics:   
+                    if len(policy_rollouts)>=25 and args.adaptive_critics:   
                     
                         flattened_rollouts = flatten_rollouts(policy_rollouts)
                         R2,bias = evaluate_many_critics(agent,policy_rollout.policy_return,flattened_rollouts)

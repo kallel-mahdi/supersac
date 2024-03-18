@@ -83,14 +83,14 @@ def rollout_policy(agent,env,exploration_rng,
 
 def rollout_policy2(agent,env,exploration_rng,
                    replay_buffer,actor_buffer,
-                   warmup=False,num_rollouts=5,random=False,discount=0.99):
+                   warmup=False,num_rollouts=5,random=False,discount=0.99,max_length=500):
     
     
     actor_buffer.reset()
     obs,_ = env.reset()  
     n_steps,n_rollouts,episode_step,disc,mask = 0,0,0,1.,1.
     old_last_done,last_done = 0,0
-    max_steps = num_rollouts*1000
+    max_steps = num_rollouts*max_length
     observations,disc_masks,masks,rewards = np.zeros((max_steps,obs.shape[0])),np.zeros((max_steps,)),np.zeros((max_steps,)),np.zeros((max_steps,))
     policy_returns = []
     

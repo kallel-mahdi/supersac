@@ -45,17 +45,17 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--seed',type=int,default=42) 
 parser.add_argument('--env_name',type=str,default="Ant-v5") 
 parser.add_argument('--project_name',type=str,default="delete") 
-parser.add_argument('--gamma',type=float,default=0.99)
-parser.add_argument('--max_steps',type=int,default=1_000_000) 
+parser.add_argument('--gamma',type=float,default=0.995)
+parser.add_argument('--max_steps',type=int,default=2_000_000) 
 parser.add_argument('--num_rollouts',type=int,default=5) 
 parser.add_argument('--num_critics',type=int,default=5) 
 parser.add_argument('--adaptive_critics',type=str2bool,default=True) 
 parser.add_argument('--discount_entropy',type=str2bool,default=True) 
 parser.add_argument('--discount_actor',type=str2bool,default=True) 
-parser.add_argument('--max_episode_steps',type=int,default=500) 
+parser.add_argument('--max_episode_steps',type=int,default=1000) 
 parser.add_argument('--entropy_coeff',type=float,default=1.) 
 parser.add_argument('--actor_lr',type=float,default=3e-4) 
-parser.add_argument('--temp_lr',type=float,default=3e-4) 
+parser.add_argument('--temp_lr',type=float,default=6e-4) 
 
 
 args = parser.parse_args()
@@ -97,16 +97,6 @@ class Temperature(nn.Module):
                                   (), self.initial_temperature))
         return jnp.abs(log_temp)
 
-# class Temperature(nn.Module):
-#     initial_temperature: float = 1e-2
-
-#     @nn.compact
-#     def __call__(self) -> jnp.ndarray:
-#         log_temp = self.param('log_temp',
-#                               init_fn=lambda key: jnp.full(
-#                                   (), jnp.log(self.initial_temperature)))
-#         return jnp.exp(log_temp)
-        
 
 class SACAgent(flax.struct.PyTreeNode):
     rng: PRNGKey
@@ -115,7 +105,6 @@ class SACAgent(flax.struct.PyTreeNode):
     actor: TrainState
     temp: TrainState
     config: dict = nonpytree_field()
-
 
     #@jax.jit
     def update_critics(agent,batch: Batch):
@@ -279,12 +268,9 @@ def create_learner(
 
         actor_params = actor_def.init(actor_key, observations)['params']
         actor = TrainState.create(actor_def, actor_params, tx=optax.rmsprop(learning_rate=actor_lr))
-        #actor = TrainState.create(actor_def, actor_params, tx=optax.adam(learning_rate=actor_lr,b1=0.9))
-        
         
         temp_def = Temperature()
         temp_params = temp_def.init(rng)['params']
-        #temp = TrainState.create(temp_def, temp_params, tx=optax.sgd(learning_rate=temp_lr))
         temp = TrainState.create(temp_def, temp_params, tx=optax.rmsprop(learning_rate=temp_lr))
         
         if target_entropy is None:
@@ -339,7 +325,7 @@ def train(args):
         }
     
 
-    env = EpisodeMonitor(gym.make(args.env_name,max_episode_steps=args.max_episode_steps))
+    env = EpisodeMonitor(gym.make(args.env_name,max_episode_steps=args.max_episode_steps,healthy_reward=0.75))
     #env = EpisodeMonitor(gym.make(args.env_name,max_episode_steps=args.max_episode_steps))
     eval_env = EpisodeMonitor(gym.make(args.env_name))
     wandb_run = setup_wandb(**wandb_config)
@@ -389,7 +375,7 @@ def train(args):
                 warmup=(i < start_steps)
                 
                 logging.debug('policy rollout')
-                replay_buffer,actor_buffer,policy_rollout,policy_return,variance,undisc_policy_return,num_steps = rollout_policy2(
+                replay_buffer,actor_buffer,policy_rollout,policy_return,variance,undisc_policy_return,num_steps = rollout_policy(
                                                                         agent,env,exploration_rng,
                                                                         replay_buffer,actor_buffer,warmup=warmup,
                                                                         num_rollouts=args.num_rollouts,random=False,

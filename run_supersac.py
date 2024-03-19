@@ -43,7 +43,7 @@ os.environ['TF_CUDNN_DETERMINISTIC'] = '1'
 ##############################
 parser = argparse.ArgumentParser()
 parser.add_argument('--seed',type=int,default=42) 
-parser.add_argument('--env_name',type=str,default="Ant-v5") 
+parser.add_argument('--env_name',type=str,default="Hopper-v5") 
 parser.add_argument('--project_name',type=str,default="delete") 
 parser.add_argument('--gamma',type=float,default=0.995)
 parser.add_argument('--max_steps',type=int,default=2_000_000) 
@@ -56,7 +56,8 @@ parser.add_argument('--max_episode_steps',type=int,default=1000)
 parser.add_argument('--entropy_coeff',type=float,default=1.) 
 parser.add_argument('--actor_lr',type=float,default=3e-4) 
 parser.add_argument('--temp_lr',type=float,default=6e-4) 
-
+parser.add_argument('--healthy_reward',type=float,default=1.) 
+#parser.add_argument('--healthy_reward',type=float,default=0.75)
 
 args = parser.parse_args()
 
@@ -268,9 +269,12 @@ def create_learner(
 
         actor_params = actor_def.init(actor_key, observations)['params']
         actor = TrainState.create(actor_def, actor_params, tx=optax.rmsprop(learning_rate=actor_lr))
+        #actor = TrainState.create(actor_def, actor_params, tx=optax.adam(learning_rate=actor_lr,b1=0.9))
+        
         
         temp_def = Temperature()
         temp_params = temp_def.init(rng)['params']
+        #temp = TrainState.create(temp_def, temp_params, tx=optax.sgd(learning_rate=temp_lr))
         temp = TrainState.create(temp_def, temp_params, tx=optax.rmsprop(learning_rate=temp_lr))
         
         if target_entropy is None:
@@ -324,9 +328,12 @@ def train(args):
         'hyperparam_dict':args.__dict__,
         }
     
-
-    env = EpisodeMonitor(gym.make(args.env_name,max_episode_steps=args.max_episode_steps,healthy_reward=0.75))
-    #env = EpisodeMonitor(gym.make(args.env_name,max_episode_steps=args.max_episode_steps))
+    ### HalfCheetah does not have healthy_reward argument
+    if 'HalfCheetah' in args.env_name:
+        env = EpisodeMonitor(gym.make(args.env_name,max_episode_steps=args.max_episode_steps))
+    else:
+        env = EpisodeMonitor(gym.make(args.env_name,max_episode_steps=args.max_episode_steps,healthy_reward=args.healthy_reward))
+      
     eval_env = EpisodeMonitor(gym.make(args.env_name))
     wandb_run = setup_wandb(**wandb_config)
 
@@ -363,7 +370,7 @@ def train(args):
     exploration_rng = jax.random.PRNGKey(0)
     i = 0
     unlogged_steps = 0
-    policy_rollouts = deque([], maxlen=25)
+    policy_rollouts = deque([], maxlen=20)
     warmup = True
     R2,bias = jnp.ones(args.num_critics),jnp.zeros(args.num_critics)
 
@@ -388,7 +395,7 @@ def train(args):
                 
             
                 
-                if replay_buffer.size > start_steps and len(policy_rollouts)>0:
+                if replay_buffer.size > start_steps and len(policy_rollouts)>=20:
                 
                     ### Update critics ###:
                     

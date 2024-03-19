@@ -43,19 +43,19 @@ os.environ['TF_CUDNN_DETERMINISTIC'] = '1'
 ##############################
 parser = argparse.ArgumentParser()
 parser.add_argument('--seed',type=int,default=42) 
-parser.add_argument('--env_name',type=str,default="Hopper-v5") 
+parser.add_argument('--env_name',type=str,default="Ant-v5") 
 parser.add_argument('--project_name',type=str,default="delete") 
-parser.add_argument('--gamma',type=float,default=0.995)
+parser.add_argument('--gamma',type=float,default=0.99)
 parser.add_argument('--max_steps',type=int,default=1_000_000) 
 parser.add_argument('--num_rollouts',type=int,default=5) 
 parser.add_argument('--num_critics',type=int,default=5) 
 parser.add_argument('--adaptive_critics',type=str2bool,default=True) 
 parser.add_argument('--discount_entropy',type=str2bool,default=True) 
 parser.add_argument('--discount_actor',type=str2bool,default=True) 
-parser.add_argument('--max_episode_steps',type=int,default=1000) 
+parser.add_argument('--max_episode_steps',type=int,default=500) 
 parser.add_argument('--entropy_coeff',type=float,default=1.) 
-parser.add_argument('--actor_lr',type=float,default=1e-3) 
-parser.add_argument('--temp_lr',type=float,default=1e-3) 
+parser.add_argument('--actor_lr',type=float,default=3e-4) 
+parser.add_argument('--temp_lr',type=float,default=3e-4) 
 
 
 args = parser.parse_args()
@@ -339,7 +339,7 @@ def train(args):
         }
     
 
-    env = EpisodeMonitor(gym.make(args.env_name,max_episode_steps=args.max_episode_steps,healthy_reward=0.75))
+    env = EpisodeMonitor(gym.make(args.env_name,max_episode_steps=args.max_episode_steps))
     #env = EpisodeMonitor(gym.make(args.env_name,max_episode_steps=args.max_episode_steps))
     eval_env = EpisodeMonitor(gym.make(args.env_name))
     wandb_run = setup_wandb(**wandb_config)
@@ -389,7 +389,7 @@ def train(args):
                 warmup=(i < start_steps)
                 
                 logging.debug('policy rollout')
-                replay_buffer,actor_buffer,policy_rollout,policy_return,variance,undisc_policy_return,num_steps = rollout_policy(
+                replay_buffer,actor_buffer,policy_rollout,policy_return,variance,undisc_policy_return,num_steps = rollout_policy2(
                                                                         agent,env,exploration_rng,
                                                                         replay_buffer,actor_buffer,warmup=warmup,
                                                                         num_rollouts=args.num_rollouts,random=False,

@@ -43,7 +43,7 @@ os.environ['TF_CUDNN_DETERMINISTIC'] = '1'
 ##############################
 parser = argparse.ArgumentParser()
 parser.add_argument('--seed',type=int,default=42) 
-parser.add_argument('--env_name',type=str,default="Hopper-v5") 
+parser.add_argument('--env_name',type=str,default="HalfCheetah-v5") 
 parser.add_argument('--project_name',type=str,default="delete") 
 parser.add_argument('--gamma',type=float,default=0.995)
 parser.add_argument('--max_steps',type=int,default=2_000_000) 
@@ -369,7 +369,7 @@ def train(args):
     obs,info = env.reset()    
     exploration_rng = jax.random.PRNGKey(0)
     i = 0
-    unlogged_steps = 0
+    unlogged_steps,cached_steps = 0,0
     policy_rollouts = deque([], maxlen=20)
     warmup = True
     R2,bias = jnp.ones(args.num_critics),jnp.zeros(args.num_critics)
@@ -390,6 +390,7 @@ def train(args):
                                                                     
             if not warmup : policy_rollouts.append(policy_rollout)
             unlogged_steps += num_steps
+            cached_steps += num_steps
             i+=num_steps
             #pbar.update(num_steps)
             
@@ -463,7 +464,12 @@ def train(args):
                     wandb.log(eval_metrics, step=int(i),commit=True)
                 
                     unlogged_steps = 0
-
+            
+                if cached_steps >= int(1e6): 
+                    jax.clear_caches()
+                    cached_steps = 0
+                    print('clearing cache')
+            
     wandb_run.finish()
     
 

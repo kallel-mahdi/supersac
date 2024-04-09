@@ -18,6 +18,87 @@ class PolicyRollout:
     
     
 
+from jaxrl_m.rollout import PolicyRollout
+import jax
+import jax.numpy as jnp
+
+def rollout_policy_parallel(agent,env,exploration_rng,
+                   replay_buffer=None,actor_buffer=None,
+                   warmup=False,num_rollouts=5,random=False,discount=0.99,max_length=500):
+    
+    if actor_buffer is not None:
+        actor_buffer = actor_buffer.reset()
+    
+    obs,_ = env.reset()  
+    n_steps=0
+    obs_dim,action_dim = obs.shape[-1],env.action_space.shape[0]
+    max_steps = num_rollouts*max_length
+    takes,observations,next_observations,actions,masks,disc_masks,rewards = np.zeros((max_steps,)),np.zeros((max_steps,obs_dim)),np.zeros((max_steps,obs_dim)),np.zeros((max_steps,action_dim)),np.zeros((max_steps,)),np.zeros((max_steps,)),np.zeros((max_steps,))
+    take,mask,disc_mask,policy_returns = jnp.ones_like(num_rollouts),jnp.ones_like(num_rollouts),jnp.ones_like(num_rollouts),jnp.zeros_like(num_rollouts)
+    
+    
+    for i in range(max_length):
+        
+        if warmup:
+            action = np.tanh(np.random.rand(num_rollouts,action_dim))
+            next_obs, reward, done, truncated, info = env.step(action)
+        else:
+            exploration_rng, key = jax.random.split(exploration_rng)
+            action = agent.sample_actions(obs,seed=exploration_rng,random=random)
+            action = np.array(action)
+            next_obs, reward, done, truncated, info = env.step(action)
+        
+        policy_returns += reward * disc_mask
+        mask = mask * (1 - done)
+        
+        takes[n_steps:n_steps+num_rollouts] = take
+        observations[n_steps:n_steps+num_rollouts] = obs
+        next_observations[n_steps:n_steps+num_rollouts] = next_obs
+        actions[n_steps:n_steps+num_rollouts] = action
+        disc_masks[n_steps:n_steps+num_rollouts] = disc_mask
+        rewards[n_steps:n_steps+num_rollouts] = reward
+        masks[n_steps:n_steps+num_rollouts] = mask
+        
+       
+        
+        disc_mask = discount * disc_mask * mask
+        obs = next_obs
+        take = mask
+        n_steps += sum(mask)
+        
+        
+        if sum(mask)==0: break
+      
+    
+    env.close()
+
+    policy_return = policy_returns.mean()
+    variance = policy_returns.var()
+    undisc_policy_return = (rewards).sum()/num_rollouts
+    
+    policy_rollout = PolicyRollout(                                     
+                                    policy_params=agent.actor.params,
+                                    policy_return=policy_return,
+                                    variance=variance,
+                                    observations=observations,
+                                    disc_masks=disc_masks,
+                                    num_rollouts=jnp.array(num_rollouts))
+    
+    for (obs,action,reward,next_obs,mask,take,disc) in zip(observations,actions,rewards,next_observations,masks,takes,disc_masks):
+        
+        if take: 
+            
+            transition = dict(observations=obs,actions=action,
+                              rewards=reward,masks=mask,next_observations=next_obs,discounts=disc)
+            
+            if replay_buffer is not None:
+                replay_buffer.add_transition(transition)
+
+            if actor_buffer is not None:
+                actor_buffer.add_transition(transition)
+          
+    return replay_buffer,actor_buffer,policy_rollout,policy_return,variance,undisc_policy_return,n_steps
+
 def rollout_policy(agent,env,exploration_rng,
                    replay_buffer=None,actor_buffer=None,
                    warmup=False,num_rollouts=5,random=False,discount=0.99,max_length=500):

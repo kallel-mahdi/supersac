@@ -1,0 +1,10 @@
+tyro
+numpy==1.26.2
+gymnasium[mujoco]
+wandb
+tensorboard 
+torch
+#torch --index-url https://download.pytorch.org/whl/cu118
+
+
+#pip3 install --pre torch torchvision torchaudio --index-url https://download.pytorch.org/whl/nightly/cu121

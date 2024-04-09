@@ -33,7 +33,7 @@ parser.add_argument('--seed', type=int, default=1, help='seed of the experiment'
 parser.add_argument('--torch_deterministic', default=True,action='store_true', help='if toggled, `torch.backends.cudnn.deterministic=False`')
 parser.add_argument('--cuda', action='store_true',default=True, help='if toggled, cuda will be enabled by default')
 parser.add_argument('--track', action='store_true', default=True,help='if toggled, this experiment will be tracked with Weights and Biases')
-parser.add_argument('--wandb_project_name', type=str, default='cleanRL', help='the wandb\'s project name')
+parser.add_argument('--project_name', type=str, default='cleanRL', help='the wandb\'s project name')
 parser.add_argument('--capture_video', action='store_true',default=False, help='whether to capture videos of the agent performances (check out `videos` folder)')
 parser.add_argument('--save_model', action='store_true',default=False, help='whether to save model into the `runs/{run_name}` folder')
 parser.add_argument('--upload_model', action='store_true',default=False, help='whether to upload the saved model to huggingface')

@@ -328,6 +328,7 @@ def train(args):
         'name':None,
         'hyperparam_dict':args.__dict__,
         }
+    wandb_run = setup_wandb(**wandb_config)
     
     ### HalfCheetah does not have healthy_reward argument
     # if 'HalfCheetah' in args.env_name:
@@ -339,7 +340,7 @@ def train(args):
     #eval_env = EpisodeMonitor(gym.make(args.env_name))
     env = envpool.make(args.env_name, env_type="gymnasium", num_envs=args.num_rollouts)
     eval_env = envpool.make(args.env_name, env_type="gymnasium", num_envs=10)
-    wandb_run = setup_wandb(**wandb_config)
+    
 
     example_transition = dict(
         observations=env.observation_space.sample(),

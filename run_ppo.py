@@ -12,93 +12,74 @@ import torch.optim as optim
 import tyro
 from torch.distributions.normal import Normal
 from torch.utils.tensorboard import SummaryWriter
-
+from jaxrl_m.wandb import setup_wandb
 import os
+import argparse
 os.environ["WANDB_API_KEY"]="28996bd59f1ba2c5a8c3f2cc23d8673c327ae230"
 
-@dataclass
-class Args:
-    exp_name: str = os.path.basename(__file__)[: -len(".py")]
-    """the name of this experiment"""
-    seed: int = 1
-    """seed of the experiment"""
-    torch_deterministic: bool = True
-    """if toggled, `torch.backends.cudnn.deterministic=False`"""
-    cuda: bool = True
-    """if toggled, cuda will be enabled by default"""
-    track: bool = True
-    """if toggled, this experiment will be tracked with Weights and Biases"""
-    wandb_project_name: str = "cleanRL"
-    """the wandb's project name"""
-    wandb_entity: str = None
-    """the entity (team) of wandb's project"""
-    capture_video: bool = False
-    """whether to capture videos of the agent performances (check out `videos` folder)"""
-    save_model: bool = False
-    """whether to save model into the `runs/{run_name}` folder"""
-    upload_model: bool = False
-    """whether to upload the saved model to huggingface"""
-    hf_entity: str = ""
-    """the user or org name of the model repository from the Hugging Face Hub"""
+def str2bool(v):
+    if isinstance(v, bool):
+        return v
+    if v.lower() in ('yes', 'true', 't', 'y', '1'):
+        return True
+    elif v.lower() in ('no', 'false', 'f', 'n', '0'):
+        return False
+    else:
+        raise argparse.ArgumentTypeError('Boolean value expected.')
+    
 
-    # Algorithm specific arguments
-    env_id: str = "Walker2d-v4"
-    """the id of the environment"""
-    total_timesteps: int = 1000000
-    """total timesteps of the experiments"""
-    learning_rate: float = 3e-4
-    """the learning rate of the optimizer"""
-    num_envs: int = 1
-    """the number of parallel game environments"""
-    num_steps: int = 2048
-    """the number of steps to run in each environment per policy rollout"""
-    anneal_lr: bool = True
-    """Toggle learning rate annealing for policy and value networks"""
-    gamma: float = 0.99
-    """the discount factor gamma"""
-    gae_lambda: float = 0.95
-    """the lambda for the general advantage estimation"""
-    num_minibatches: int = 32
-    """the number of mini-batches"""
-    update_epochs: int = 10
-    """the K epochs to update the policy"""
-    norm_adv: bool = True
-    """Toggles advantages normalization"""
-    clip_coef: float = 0.2
-    """the surrogate clipping coefficient"""
-    clip_vloss: bool = True
-    """Toggles whether or not to use a clipped loss for the value function, as per the paper."""
-    ent_coef: float = 0.0
-    """coefficient of the entropy"""
-    vf_coef: float = 0.5
-    """coefficient of the value function"""
-    max_grad_norm: float = 0.5
-    """the maximum norm for the gradient clipping"""
-    target_kl: float = None
-    """the target KL divergence threshold"""
+parser = argparse.ArgumentParser(description='PPO Arguments')
+parser.add_argument('--seed', type=int, default=1, help='seed of the experiment')
+parser.add_argument('--torch_deterministic', default=True,action='store_true', help='if toggled, `torch.backends.cudnn.deterministic=False`')
+parser.add_argument('--cuda', action='store_true',default=True, help='if toggled, cuda will be enabled by default')
+parser.add_argument('--track', action='store_true', default=True,help='if toggled, this experiment will be tracked with Weights and Biases')
+parser.add_argument('--wandb_project_name', type=str, default='cleanRL', help='the wandb\'s project name')
+parser.add_argument('--capture_video', action='store_true',default=False, help='whether to capture videos of the agent performances (check out `videos` folder)')
+parser.add_argument('--save_model', action='store_true',default=False, help='whether to save model into the `runs/{run_name}` folder')
+parser.add_argument('--upload_model', action='store_true',default=False, help='whether to upload the saved model to huggingface')
+parser.add_argument('--hf_entity', type=str, default='', help='the user or org name of the model repository from the Hugging Face Hub')
+parser.add_argument('--env_name', type=str, default='Walker2d-v4', help='the id of the environment')
+parser.add_argument('--max_steps', type=int, default=1000000, help='total timesteps of the experiments')
+parser.add_argument('--learning_rate', type=float, default=3e-4, help='the learning rate of the optimizer')
+parser.add_argument('--num_envs', type=int, default=1, help='the number of parallel game environments')
+parser.add_argument('--num_steps', type=int, default=2048, help='the number of steps to run in each environment per policy rollout')
+parser.add_argument('--anneal_lr', default=True,action='store_true', help='Toggle learning rate annealing for policy and value networks')
+parser.add_argument('--normalize_reward',type=str2bool, default=True)
+parser.add_argument('--gamma', type=float, default=0.99, help='the discount factor gamma')
+parser.add_argument('--gae_lambda', type=float, default=0.95, help='the lambda for the general advantage estimation')
+parser.add_argument('--num_minibatches', type=int, default=32, help='the number of mini-batches')
+parser.add_argument('--update_epochs', type=int, default=10, help='the K epochs to update the policy')
+parser.add_argument('--norm_adv',default=True,action='store_true', help='Toggles advantages normalization')
+parser.add_argument('--clip_coef', type=float, default=0.2, help='the surrogate clipping coefficient')
+parser.add_argument('--clip_vloss', default=True,action='store_true', help='Toggles whether or not to use a clipped loss for the value function, as per the paper.')
+parser.add_argument('--ent_coef', type=float, default=0.0, help='coefficient of the entropy')
+parser.add_argument('--vf_coef', type=float, default=0.5, help='coefficient of the value function')
+parser.add_argument('--max_grad_norm', type=float, default=0.5, help='the maximum norm for the gradient clipping')
+parser.add_argument('--target_kl', type=float, default=None, help='the target KL divergence threshold')
+args = parser.parse_args()
+args.batch_size = int(args.num_envs * args.num_steps)
+args.minibatch_size = int(args.batch_size // args.num_minibatches)
+args.num_iterations = args.max_steps // args.batch_size
 
-    # to be filled in runtime
-    batch_size: int = 0
-    """the batch size (computed in runtime)"""
-    minibatch_size: int = 0
-    """the mini-batch size (computed in runtime)"""
-    num_iterations: int = 0
-    """the number of iterations (computed in runtime)"""
+args = parser.parse_args()
 
 
-def make_env(env_id, idx, capture_video, run_name, gamma):
+
+
+def make_env(env_name, idx, capture_video, run_name, gamma):
     def thunk():
         if capture_video and idx == 0:
-            env = gym.make(env_id, render_mode="rgb_array")
+            env = gym.make(env_name, render_mode="rgb_array")
             env = gym.wrappers.RecordVideo(env, f"videos/{run_name}")
         else:
-            env = gym.make(env_id)
+            env = gym.make(env_name)
         env = gym.wrappers.FlattenObservation(env)  # deal with dm_control's Dict observation space
         env = gym.wrappers.RecordEpisodeStatistics(env)
         env = gym.wrappers.ClipAction(env)
         env = gym.wrappers.NormalizeObservation(env)
         env = gym.wrappers.TransformObservation(env, lambda obs: np.clip(obs, -10, 10))
-        #env = gym.wrappers.NormalizeReward(env, gamma=gamma)
+        if args.normalize_reward :
+            env = gym.wrappers.NormalizeReward(env, gamma=gamma)
         env = gym.wrappers.TransformReward(env, lambda reward: np.clip(reward, -10, 10))
         return env
 
@@ -142,30 +123,34 @@ class Agent(nn.Module):
             action = probs.sample()
         return action, probs.log_prob(action).sum(1), probs.entropy().sum(1), self.critic(x)
 
+    
+    def get_deterministic_action(self, x, action=None):
+        action_mean = self.actor_mean(x)
+        action_logstd = self.actor_logstd.expand_as(action_mean)
+        action_std = torch.exp(action_logstd)
+        probs = Normal(action_mean, action_std)
+        if action is None:
+            action = probs.sample()
+        return action, probs.log_prob(action).sum(1), probs.entropy().sum(1), self.critic(x)
 
 if __name__ == "__main__":
-    args = tyro.cli(Args)
+    
     args.batch_size = int(args.num_envs * args.num_steps)
     args.minibatch_size = int(args.batch_size // args.num_minibatches)
-    args.num_iterations = args.total_timesteps // args.batch_size
-    run_name = f"{args.env_id}__{args.exp_name}__{args.seed}__{int(time.time())}"
+    args.num_iterations = args.max_steps // args.batch_size
+    run_name = f"{args.env_name}__{args.exp_name}__{args.seed}__{int(time.time())}"
     if args.track:
-        import wandb
-
-        wandb.init(
-            project=args.wandb_project_name,
-            entity=args.wandb_entity,
-            sync_tensorboard=True,
-            config=vars(args),
-            name=run_name,
-            monitor_gym=True,
-            save_code=True,
+        wandb_config = {
+                'project': args.project_name,
+                'name':None,
+                'hyperparam_dict':args.__dict__,
+                }
+        wandb_run = setup_wandb(**wandb_config)
+        writer = SummaryWriter(f"runs/{run_name}")
+        writer.add_text(
+            "hyperparameters",
+            "|param|value|\n|-|-|\n%s" % ("\n".join([f"|{key}|{value}|" for key, value in vars(args).items()])),
         )
-    writer = SummaryWriter(f"runs/{run_name}")
-    writer.add_text(
-        "hyperparameters",
-        "|param|value|\n|-|-|\n%s" % ("\n".join([f"|{key}|{value}|" for key, value in vars(args).items()])),
-    )
 
     # TRY NOT TO MODIFY: seeding
     random.seed(args.seed)
@@ -177,7 +162,7 @@ if __name__ == "__main__":
 
     # env setup
     envs = gym.vector.SyncVectorEnv(
-        [make_env(args.env_id, i, args.capture_video, run_name, args.gamma) for i in range(args.num_envs)]
+        [make_env(args.env_name, i, args.capture_video, run_name, args.gamma) for i in range(args.num_envs)]
     )
     assert isinstance(envs.single_action_space, gym.spaces.Box), "only continuous action space is supported"
 
@@ -334,7 +319,7 @@ if __name__ == "__main__":
         episodic_returns = evaluate(
             model_path,
             make_env,
-            args.env_id,
+            args.env_name,
             eval_episodes=10,
             run_name=f"{run_name}-eval",
             Model=Agent,
@@ -344,12 +329,6 @@ if __name__ == "__main__":
         for idx, episodic_return in enumerate(episodic_returns):
             writer.add_scalar("eval/episodic_return", episodic_return, idx)
 
-        if args.upload_model:
-            from cleanrl_utils.huggingface import push_to_hub
-
-            repo_name = f"{args.env_id}-{args.exp_name}-seed{args.seed}"
-            repo_id = f"{args.hf_entity}/{repo_name}" if args.hf_entity else repo_name
-            push_to_hub(args, episodic_returns, repo_id, "PPO", f"runs/{run_name}", f"videos/{run_name}-eval")
-
     envs.close()
     writer.close()
+    wandb_run.finish()

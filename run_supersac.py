@@ -233,12 +233,9 @@ class SACAgent(flax.struct.PyTreeNode):
                        temperature: float = 1.0,
                        ) -> jnp.ndarray:
         
-        if random:
+        ### random always true
+        actions = agent.actor(observations, temperature=temperature).sample(seed=seed)
         
-            actions = agent.actor(observations, temperature=temperature).sample(seed=seed)
-        
-        else:
-            actions = agent.actor(observations).mode()
         
         return actions
 

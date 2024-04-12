@@ -45,7 +45,7 @@ os.environ['TF_CUDNN_DETERMINISTIC'] = '1'
 parser = argparse.ArgumentParser()
 parser.add_argument('--algo_name', type=str, default='sac', help='the name of the RL algorithm')
 parser.add_argument('--seed',type=int,default=42) 
-parser.add_argument('--env_name',type=str,default="Walker2d-v4") 
+parser.add_argument('--env_name',type=str,default="HalfCheetah-v4") 
 parser.add_argument('--project_name',type=str,default="delete") 
 parser.add_argument('--gamma',type=float,default=0.99)
 parser.add_argument('--max_steps',type=int,default=1_000_000) 
@@ -472,7 +472,7 @@ def train(args):
                         _,_,policy_rollout,policy_return,variance,undisc_policy_return,num_steps = rollout_policy_parallel(
                                                                         agent,eval_env,exploration_rng,
                                                                         None,None,warmup=False,
-                                                                        num_rollouts=args.num_rollouts,random=True,
+                                                                        num_rollouts=10,random=True,
                                                                         discount = args.gamma,max_length=1000)
                         eval_metrics = {"policy_return": policy_return,"std": jnp.sqrt(variance),"undisc_policy_return": undisc_policy_return}
                         eval_metrics = {f'evaluation/{k}': v for k, v in eval_metrics.items()}

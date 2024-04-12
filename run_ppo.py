@@ -65,6 +65,7 @@ def str2bool(v):
     
 
 parser = argparse.ArgumentParser(description='PPO Arguments')
+parser.add_argument('--algo_name', type=str, default='ppo', help='the name of the RL algorithm')
 parser.add_argument('--seed', type=int, default=1, help='seed of the experiment')
 parser.add_argument('--torch_deterministic', default=True,action='store_true', help='if toggled, `torch.backends.cudnn.deterministic=False`')
 parser.add_argument('--cuda', action='store_true',default=True, help='if toggled, cuda will be enabled by default')

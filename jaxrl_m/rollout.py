@@ -5,6 +5,17 @@ import numpy as np
 import jax.numpy as jnp
 
 
+
+
+
+from typing import Callable
+
+import gymnasium as gym
+import torch
+
+
+
+
 @struct.dataclass
 class PolicyRollout:
     
@@ -43,7 +54,9 @@ def rollout_policy_parallel(agent,env,exploration_rng,
             action = np.tanh(np.random.rand(num_rollouts,action_dim))
             next_obs, reward, done, truncated, info = env.step(action)
         else:
-            exploration_rng, key = jax.random.split(exploration_rng)
+            
+            if exploration_rng is not None:
+                exploration_rng, key = jax.random.split(exploration_rng)
             action = agent.sample_actions(obs,seed=exploration_rng,random=random)
             action = np.array(action)
             next_obs, reward, done, truncated, info = env.step(action)
@@ -76,27 +89,31 @@ def rollout_policy_parallel(agent,env,exploration_rng,
     variance = policy_returns.var()
     undisc_policy_return = (rewards).sum()/num_rollouts
     
-    policy_rollout = PolicyRollout(                                     
-                                    policy_params=agent.actor.params,
-                                    policy_return=policy_return,
-                                    variance=variance,
-                                    observations=observations,
-                                    disc_masks=disc_masks,
-                                    num_rollouts=jnp.array(num_rollouts))
-    
-    for (obs,action,reward,next_obs,mask,take,disc) in zip(observations,actions,rewards,next_observations,masks,takes,disc_masks):
+    if replay_buffer is not None:
+        policy_rollout = PolicyRollout(                                     
+                                        policy_params=agent.actor.params,
+                                        policy_return=policy_return,
+                                        variance=variance,
+                                        observations=observations,
+                                        disc_masks=disc_masks,
+                                        num_rollouts=jnp.array(num_rollouts))
         
-        if take: 
+    
+    
+        for (obs,action,reward,next_obs,mask,take,disc) in zip(observations,actions,rewards,next_observations,masks,takes,disc_masks):
             
-            transition = dict(observations=obs,actions=action,
-                              rewards=reward,masks=mask,next_observations=next_obs,discounts=disc)
+            if take: 
+                
+                transition = dict(observations=obs,actions=action,
+                                rewards=reward,masks=mask,next_observations=next_obs,discounts=disc)
             
-            if replay_buffer is not None:
                 replay_buffer.add_transition(transition)
-
-            if actor_buffer is not None:
                 actor_buffer.add_transition(transition)
-          
+    
+    else :
+        
+        policy_rollout = None
+        
     return replay_buffer,actor_buffer,policy_rollout,policy_return,variance,undisc_policy_return,n_steps
 
 def rollout_policy(agent,env,exploration_rng,

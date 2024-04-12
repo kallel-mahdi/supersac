@@ -231,7 +231,13 @@ class SACAgent(flax.struct.PyTreeNode):
                        random = bool,
                        temperature: float = 1.0,
                        ) -> jnp.ndarray:
-        actions = agent.actor(observations, temperature=temperature).sample(seed=seed)
+        
+        if random:
+        
+            actions = agent.actor(observations, temperature=temperature).sample(seed=seed)
+        
+        else:
+            actions = agent.actor(observations).mode()
         
         return actions
 
@@ -390,7 +396,7 @@ def train(args):
                 replay_buffer,actor_buffer,policy_rollout,policy_return,variance,undisc_policy_return,num_steps = rollout_policy_parallel(
                                                                         agent,env,exploration_rng,
                                                                         replay_buffer,actor_buffer,warmup=warmup,
-                                                                        num_rollouts=args.num_rollouts,random=False,
+                                                                        num_rollouts=args.num_rollouts,random=True,
                                                                         discount = args.gamma,max_length=args.max_episode_steps)
                 
                 #print(f'size {replay_buffer.size}')

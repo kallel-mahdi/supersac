@@ -45,10 +45,10 @@ os.environ['TF_CUDNN_DETERMINISTIC'] = '1'
 parser = argparse.ArgumentParser()
 parser.add_argument('--algo_name', type=str, default='sac', help='the name of the RL algorithm')
 parser.add_argument('--seed',type=int,default=42) 
-parser.add_argument('--env_name',type=str,default="Ant-v4") 
+parser.add_argument('--env_name',type=str,default="Walker2d-v4") 
 parser.add_argument('--project_name',type=str,default="delete") 
 parser.add_argument('--gamma',type=float,default=0.995)
-parser.add_argument('--max_steps',type=int,default=1_000_000) 
+parser.add_argument('--max_steps',type=int,default=2_000_000) 
 parser.add_argument('--num_rollouts',type=int,default=5) 
 parser.add_argument('--num_critics',type=int,default=5)     
 parser.add_argument('--adaptive_critics',type=str2bool,default=True) 
@@ -335,15 +335,17 @@ def train(args):
     wandb_run = setup_wandb(**wandb_config)
     
     ### HalfCheetah does not have healthy_reward argument
-    # if 'HalfCheetah' in args.env_name:
-    #     env = EpisodeMonitor(gym.make(args.env_name,max_episode_steps=args.max_episode_steps))
-    # else:
-    #     env = EpisodeMonitor(gym.make(args.env_name,max_episode_steps=args.max_episode_steps,healthy_reward=args.healthy_reward))
+    if 'HalfCheetah' in args.env_name:
+        env = EpisodeMonitor(gym.make(args.env_name,max_episode_steps=args.max_episode_steps))
+    else:
+        print(f'env_name: {args.env_name}, max_episode_steps: {args.max_episode_steps}, healthy_reward: {args.healthy_reward}')
+        env = EpisodeMonitor(gym.make(args.env_name,max_episode_steps=args.max_episode_steps,healthy_reward=args.healthy_reward))
     
-    #env = EpisodeMonitor(gym.make(args.env_name,max_episode_steps=args.max_episode_steps))
-    #eval_env = EpisodeMonitor(gym.make(args.env_name))
-    env = envpool.make(args.env_name, env_type="gymnasium", num_envs=args.num_rollouts,healthy_reward=args.healthy_reward)
-    eval_env = envpool.make(args.env_name, env_type="gymnasium", num_envs=10)
+    eval_env = EpisodeMonitor(gym.make(args.env_name,max_episode_steps=args.max_episode_steps))
+    # env = EpisodeMonitor(gym.make(args.env_name,max_episode_steps=args.max_episode_steps))
+    # eval_env = EpisodeMonitor(gym.make(args.env_name))
+    # env = envpool.make(args.env_name, env_type="gymnasium", num_envs=args.num_rollouts,healthy_reward=args.healthy_reward)
+    # eval_env = envpool.make(args.env_name, env_type="gymnasium", num_envs=10)
     
 
     example_transition = dict(
@@ -391,21 +393,17 @@ def train(args):
                 warmup=(i < start_steps)
                 
                 logging.debug('policy rollout')
-                replay_buffer,actor_buffer,policy_rollout,policy_return,variance,undisc_policy_return,num_steps = rollout_policy_parallel(
+                replay_buffer,actor_buffer,policy_rollout,policy_return,variance,undisc_policy_return,num_steps = rollout_policy(
                                                                         agent,env,exploration_rng,
                                                                         replay_buffer,actor_buffer,warmup=warmup,
                                                                         num_rollouts=args.num_rollouts,random=True,
                                                                         discount = args.gamma,max_length=args.max_episode_steps)
-                
-                #print(f'size {replay_buffer.size}')
-                                                                        
+                                                              
                 if not warmup : policy_rollouts.append(policy_rollout)
                 unlogged_steps += num_steps
                 cached_steps += num_steps
                 i+=num_steps
                 pbar.update(int(num_steps))
-                
-            
                 
                 if replay_buffer.size > start_steps:
                 
@@ -431,9 +429,7 @@ def train(args):
                         wandb.log(R2_train_info, step=int(i),commit=False)
                     
                     ### Update actor ###
-                    logging.debug('actor get all')
                     actor_batch = actor_buffer.get_all()    
-                    logging.debug('update actor')
                     agent, actor_update_info = agent.update_actor(actor_batch,R2)    
                     critic_update_info = {}
                     update_info = {**critic_update_info, **actor_update_info}
@@ -465,11 +461,10 @@ def train(args):
                     wandb.log(exploration_metrics, step=int(i),commit=False)
                 
                     ### Log evaluation info ###
-                    logging.debug('evaluation')
                     
                     if unlogged_steps >= log_interval:
                         
-                        _,_,policy_rollout,policy_return,variance,undisc_policy_return,num_steps = rollout_policy_parallel(
+                        _,_,policy_rollout,policy_return,variance,undisc_policy_return,num_steps = rollout_policy(
                                                                         agent,eval_env,exploration_rng,
                                                                         None,None,warmup=False,
                                                                         num_rollouts=10,random=True,

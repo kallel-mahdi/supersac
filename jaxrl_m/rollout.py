@@ -47,7 +47,6 @@ def rollout_policy_parallel(agent,env,exploration_rng,
     takes,observations,next_observations,actions,masks,disc_masks,rewards = np.zeros((max_steps,)),np.zeros((max_steps,obs_dim)),np.zeros((max_steps,obs_dim)),np.zeros((max_steps,action_dim)),np.zeros((max_steps,)),np.zeros((max_steps,)),np.zeros((max_steps,))
     take,mask,disc_mask,policy_returns = jnp.ones_like(num_rollouts),jnp.ones_like(num_rollouts),jnp.ones_like(num_rollouts),jnp.zeros_like(num_rollouts)
     
-    
     for i in range(max_length):
         
         if warmup:

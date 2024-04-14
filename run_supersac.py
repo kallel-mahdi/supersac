@@ -46,10 +46,10 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--algo_name', type=str, default='sac', help='the name of the RL algorithm')
 parser.add_argument('--seed',type=int,default=42) 
 parser.add_argument('--env_name',type=str,default="HalfCheetah-v4") 
-parser.add_argument('--project_name',type=str,default="delete") 
+parser.add_argument('--project_name',type=str,default="yes_momentum") 
 parser.add_argument('--gamma',type=float,default=0.99)
 parser.add_argument('--max_steps',type=int,default=2_000_000) 
-parser.add_argument('--num_rollouts',type=int,default=5) 
+parser.add_argument('--num_rollouts',type=int,default=10) 
 parser.add_argument('--num_critics',type=int,default=5)     
 parser.add_argument('--adaptive_critics',type=str2bool,default=True) 
 parser.add_argument('--discount_entropy',type=str2bool,default=True) 
@@ -273,14 +273,15 @@ def create_learner(
         critics = jax.vmap(TrainState.create,in_axes=(None,0,None))(critic_def,critic_params,optax.adam(learning_rate=critic_lr))
 
         actor_params = actor_def.init(actor_key, observations)['params']
-        actor = TrainState.create(actor_def, actor_params, tx=optax.rmsprop(learning_rate=actor_lr))
+        #actor = TrainState.create(actor_def, actor_params, tx=optax.rmsprop(learning_rate=actor_lr))
+        actor = TrainState.create(actor_def, actor_params, tx=optax.adam(learning_rate=actor_lr))
         #actor = TrainState.create(actor_def, actor_params, tx=optax.adam(learning_rate=actor_lr,b1=0.9))
         
         
         temp_def = Temperature()
         temp_params = temp_def.init(rng)['params']
         #temp = TrainState.create(temp_def, temp_params, tx=optax.sgd(learning_rate=temp_lr))
-        temp = TrainState.create(temp_def, temp_params, tx=optax.rmsprop(learning_rate=temp_lr))
+        temp = TrainState.create(temp_def, temp_params, tx=optax.adam(learning_rate=temp_lr))
         
         if target_entropy is None:
             target_entropy = -entropy_coeff*action_dim
@@ -335,17 +336,17 @@ def train(args):
     wandb_run = setup_wandb(**wandb_config)
     
     ### HalfCheetah does not have healthy_reward argument
-    if 'HalfCheetah' in args.env_name:
-        env = EpisodeMonitor(gym.make(args.env_name,max_episode_steps=args.max_episode_steps))
-    else:
-        print(f'env_name: {args.env_name}, max_episode_steps: {args.max_episode_steps}, healthy_reward: {args.healthy_reward}')
-        env = EpisodeMonitor(gym.make(args.env_name,max_episode_steps=args.max_episode_steps,healthy_reward=args.healthy_reward))
+    # if 'HalfCheetah' in args.env_name:
+    #     env = EpisodeMonitor(gym.make(args.env_name,max_episode_steps=args.max_episode_steps))
+    # else:
+    #     print(f'env_name: {args.env_name}, max_episode_steps: {args.max_episode_steps}, healthy_reward: {args.healthy_reward}')
+    #     env = EpisodeMonitor(gym.make(args.env_name,max_episode_steps=args.max_episode_steps,healthy_reward=args.healthy_reward))
     
-    eval_env = EpisodeMonitor(gym.make(args.env_name,max_episode_steps=1000))
+    # eval_env = EpisodeMonitor(gym.make(args.env_name,max_episode_steps=1000))
     # env = EpisodeMonitor(gym.make(args.env_name,max_episode_steps=args.max_episode_steps))
     # eval_env = EpisodeMonitor(gym.make(args.env_name))
-    # env = envpool.make(args.env_name, env_type="gymnasium", num_envs=args.num_rollouts,healthy_reward=args.healthy_reward)
-    # eval_env = envpool.make(args.env_name, env_type="gymnasium", num_envs=10)
+    env = envpool.make(args.env_name, env_type="gymnasium", num_envs=args.num_rollouts)
+    eval_env = envpool.make(args.env_name, env_type="gymnasium", num_envs=10)
     
 
     example_transition = dict(
@@ -393,7 +394,7 @@ def train(args):
                 warmup=(i < start_steps)
                 
                 logging.debug('policy rollout')
-                replay_buffer,actor_buffer,policy_rollout,policy_return,variance,undisc_policy_return,num_steps = rollout_policy(
+                replay_buffer,actor_buffer,policy_rollout,policy_return,variance,undisc_policy_return,num_steps = rollout_policy_parallel(
                                                                         agent,env,exploration_rng,
                                                                         replay_buffer,actor_buffer,warmup=warmup,
                                                                         num_rollouts=args.num_rollouts,random=True,
@@ -464,7 +465,7 @@ def train(args):
                     
                     if unlogged_steps >= log_interval:
                         
-                        _,_,policy_rollout,policy_return,variance,undisc_policy_return,num_steps = rollout_policy(
+                        _,_,policy_rollout,policy_return,variance,undisc_policy_return,num_steps = rollout_policy_parallel(
                                                                         agent,eval_env,exploration_rng,
                                                                         None,None,warmup=False,
                                                                         num_rollouts=10,random=True,

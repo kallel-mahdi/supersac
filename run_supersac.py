@@ -337,15 +337,15 @@ def train(args):
     
     
     ### HalfCheetah does not have healthy_reward argument
-    # if 'HalfCheetah' in args.env_name:
-    #     env = EpisodeMonitor(gym.make(args.env_name,max_episode_steps=args.max_episode_steps))
-    # else:
-    #     print(f'env_name: {args.env_name}, max_episode_steps: {args.max_episode_steps}, healthy_reward: {args.healthy_reward}')
-    #     env = EpisodeMonitor(gym.make(args.env_name,max_episode_steps=args.max_episode_steps,healthy_reward=args.healthy_reward))
-    #eval_env = EpisodeMonitor(gym.make(args.env_name,max_episode_steps=1000))
+    if 'HalfCheetah' in args.env_name:
+        env = EpisodeMonitor(gym.make(args.env_name,max_episode_steps=args.max_episode_steps))
+    else:
+        print(f'env_name: {args.env_name}, max_episode_steps: {args.max_episode_steps}, healthy_reward: {args.healthy_reward}')
+        env = EpisodeMonitor(gym.make(args.env_name,max_episode_steps=args.max_episode_steps,healthy_reward=args.healthy_reward))
+    eval_env = EpisodeMonitor(gym.make(args.env_name,max_episode_steps=1000))
     
-    env = EpisodeMonitor(gym.make(args.env_name,max_episode_steps=args.max_episode_steps))
-    eval_env = EpisodeMonitor(gym.make(args.env_name))
+    # env = EpisodeMonitor(gym.make(args.env_name,max_episode_steps=args.max_episode_steps))
+    # eval_env = EpisodeMonitor(gym.make(args.env_name))
     
     # env = envpool.make(args.env_name, env_type="gymnasium", num_envs=args.num_rollouts)
     # eval_env = envpool.make(args.env_name, env_type="gymnasium", num_envs=10)

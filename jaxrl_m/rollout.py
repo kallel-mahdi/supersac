@@ -117,7 +117,7 @@ def rollout_policy_parallel(agent,env,exploration_rng,
 
 def rollout_policy(agent,env,exploration_rng,
                    replay_buffer=None,actor_buffer=None,
-                   warmup=False,num_rollouts=5,random=False,discount=0.99,max_length=500):
+                   warmup=False,num_rollouts=5,discount=0.99,max_length=500):
     
     if actor_buffer is not None:
         actor_buffer = actor_buffer.reset()
@@ -133,7 +133,7 @@ def rollout_policy(agent,env,exploration_rng,
             action = env.action_space.sample()
         else:
             exploration_rng, key = jax.random.split(exploration_rng)
-            action = agent.sample_actions(obs,seed=exploration_rng,random=random)
+            action = agent.sample_actions(obs,seed=exploration_rng)
         
         next_obs, reward, done, truncated, info = env.step(action)
         
@@ -167,7 +167,7 @@ def rollout_policy(agent,env,exploration_rng,
 
     policy_return = policy_returns.mean()
     variance = policy_returns.var()
-    undisc_policy_return = (rewards).sum()/num_rollouts
+    undisc_policy_return = rewards.sum()/num_rollouts
     policy_rollout = PolicyRollout( policy_params=agent.actor.params,
                                     policy_return=policy_return,
                                     variance=variance,

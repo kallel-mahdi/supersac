@@ -45,11 +45,11 @@ os.environ['TF_CUDNN_DETERMINISTIC'] = '1'
 parser = argparse.ArgumentParser()
 parser.add_argument('--algo_name', type=str, default='sac', help='the name of the RL algorithm')
 parser.add_argument('--seed',type=int,default=42) 
-parser.add_argument('--env_name',type=str,default="HalfCheetah-v4") 
-parser.add_argument('--project_name',type=str,default="yes_momentum") 
+parser.add_argument('--env_name',type=str,default="HalfCheetah-v5") 
+parser.add_argument('--project_name',type=str,default="delete") 
 parser.add_argument('--gamma',type=float,default=0.99)
-parser.add_argument('--max_steps',type=int,default=2_000_000) 
-parser.add_argument('--num_rollouts',type=int,default=10) 
+parser.add_argument('--max_steps',type=int,default=1_000_000) 
+parser.add_argument('--num_rollouts',type=int,default=5) 
 parser.add_argument('--num_critics',type=int,default=5)     
 parser.add_argument('--adaptive_critics',type=str2bool,default=True) 
 parser.add_argument('--discount_entropy',type=str2bool,default=True) 
@@ -57,7 +57,7 @@ parser.add_argument('--discount_actor',type=str2bool,default=True)
 parser.add_argument('--max_episode_steps',type=int,default=500) 
 parser.add_argument('--entropy_coeff',type=float,default=1.) 
 parser.add_argument('--actor_lr',type=float,default=3e-4) 
-parser.add_argument('--temp_lr',type=float,default=6e-4) 
+parser.add_argument('--temp_lr',type=float,default=3e-4) 
 parser.add_argument('--healthy_reward',type=float,default=1.) 
 
 
@@ -191,14 +191,14 @@ class SACAgent(flax.struct.PyTreeNode):
             log_probs = masks * log_probs
             
             if agent.config['discount_actor']:
-                actor_loss = (discounts*(log_probs * agent.temp() - q)).sum()/discounts.sum()
+                actor_loss = (discounts*(log_probs * agent.temp() - q)).sum()/(discounts.sum())
             else :
-                actor_loss = (log_probs * agent.temp() - q).sum()/masks.sum()
+                actor_loss = (log_probs * agent.temp() - q).sum()/(masks.sum())
             
             if agent.config['discount_entropy']:
                 entropy = -1 * (discounts*log_probs).sum()/(discounts.sum())
             else : 
-                entropy = -1 * log_probs.sum()/masks.sum()
+                entropy = -1 * log_probs.sum()/(masks.sum())
             
             return actor_loss, {
                 'actor_loss': actor_loss,
@@ -229,7 +229,6 @@ class SACAgent(flax.struct.PyTreeNode):
     def sample_actions(agent,   
                        observations: np.ndarray,
                        seed: PRNGKey,
-                       random = bool,
                        temperature: float = 1.0,
                        ) -> jnp.ndarray:
         
@@ -273,15 +272,16 @@ def create_learner(
         critics = jax.vmap(TrainState.create,in_axes=(None,0,None))(critic_def,critic_params,optax.adam(learning_rate=critic_lr))
 
         actor_params = actor_def.init(actor_key, observations)['params']
-        #actor = TrainState.create(actor_def, actor_params, tx=optax.rmsprop(learning_rate=actor_lr))
-        actor = TrainState.create(actor_def, actor_params, tx=optax.adam(learning_rate=actor_lr))
-        #actor = TrainState.create(actor_def, actor_params, tx=optax.adam(learning_rate=actor_lr,b1=0.9))
+        
+        #actor = TrainState.create(actor_def, actor_params, tx=optax.adam(learning_rate=actor_lr))
+        actor = TrainState.create(actor_def, actor_params, tx=optax.rmsprop(learning_rate=actor_lr))
         
         
         temp_def = Temperature()
         temp_params = temp_def.init(rng)['params']
-        #temp = TrainState.create(temp_def, temp_params, tx=optax.sgd(learning_rate=temp_lr))
-        temp = TrainState.create(temp_def, temp_params, tx=optax.adam(learning_rate=temp_lr))
+        #temp = TrainState.create(temp_def, temp_params, tx=optax.adam(learning_rate=temp_lr))
+        temp = TrainState.create(temp_def, temp_params, tx=optax.rmsprop(learning_rate=temp_lr))
+        
         
         if target_entropy is None:
             target_entropy = -entropy_coeff*action_dim
@@ -325,7 +325,7 @@ def train(args):
     eval_episodes=10
     batch_size = 256
     max_steps = args.max_steps
-    start_steps = 0
+    start_steps = 10000
     log_interval = 10000
 
     wandb_config = {
@@ -342,7 +342,7 @@ def train(args):
     # else:
     #     print(f'env_name: {args.env_name}, max_episode_steps: {args.max_episode_steps}, healthy_reward: {args.healthy_reward}')
     #     env = EpisodeMonitor(gym.make(args.env_name,max_episode_steps=args.max_episode_steps,healthy_reward=args.healthy_reward))
-    # eval_env = EpisodeMonitor(gym.make(args.env_name,max_episode_steps=1000))
+    #eval_env = EpisodeMonitor(gym.make(args.env_name,max_episode_steps=1000))
     
     env = EpisodeMonitor(gym.make(args.env_name,max_episode_steps=args.max_episode_steps))
     eval_env = EpisodeMonitor(gym.make(args.env_name))
@@ -399,8 +399,7 @@ def train(args):
                 replay_buffer,actor_buffer,policy_rollout,policy_return,variance,undisc_policy_return,num_steps = rollout_policy(
                                                                         agent,env,exploration_rng,
                                                                         replay_buffer,actor_buffer,warmup=warmup,
-                                                                        num_rollouts=args.num_rollouts,random=True,
-                                                                        discount = args.gamma,max_length=args.max_episode_steps)
+                                                                        num_rollouts=args.num_rollouts,discount = args.gamma,max_length=args.max_episode_steps)
                                                               
                 if not warmup : policy_rollouts.append(policy_rollout)
                 unlogged_steps += num_steps
@@ -467,15 +466,18 @@ def train(args):
                     
                     if unlogged_steps >= log_interval:
                         
-                        _,_,policy_rollout,policy_return,variance,undisc_policy_return,num_steps = rollout_policy(
-                                                                        agent,eval_env,exploration_rng,
-                                                                        None,None,warmup=False,
-                                                                        num_rollouts=10,random=True,
-                                                                        discount = args.gamma,max_length=1000)
-                        eval_metrics = {"policy_return": policy_return,"std": jnp.sqrt(variance),"undisc_policy_return": undisc_policy_return}
+                        # _,_,policy_rollout,policy_return,variance,undisc_policy_return,num_steps = rollout_policy(
+                        #                                                 agent,eval_env,exploration_rng,
+                        #                                                 None,None,warmup=False,
+                        #                                                 num_rollouts=10,random=True,
+                        #                                                 discount = args.gamma,max_length=1000)
+                        
+                        policy_fn = partial(supply_rng(agent.sample_actions), temperature=0.)
+                        eval_metrics = evaluate(policy_fn, eval_env, num_episodes=10)
+
+                        #eval_metrics = {"policy_return": policy_return,"std": jnp.sqrt(variance),"undisc_policy_return": undisc_policy_return}
                         eval_metrics = {f'evaluation/{k}': v for k, v in eval_metrics.items()}
                         wandb.log(eval_metrics, step=int(i),commit=True)
-                    
                         unlogged_steps = 0
                 
                     if cached_steps >= int(1e6): 

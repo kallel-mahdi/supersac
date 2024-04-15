@@ -14,7 +14,6 @@ def f(anc_agent,obs,actor_params,critic_params,seed):
    
     return q
     
-    
 @jax.jit
 def estimate_return(acq_rollout,
                     anc_agent,anc_critic_params,anc_return,seed):
@@ -34,6 +33,29 @@ def estimate_return(acq_rollout,
     acq_return_pred = anc_return + adv
     
     return acq_return_pred,acq_return
+
+
+
+# def estimate_sequential(anc_agent, anc_return, policy_rollouts):
+    
+#     seed = jax.random.PRNGKey(0)
+#     anc_critic_params = anc_agent.critic.params
+    
+    
+#     estimate = partial(estimate_return,anc_agent,anc_critic_params,anc_return,seed)
+    
+#     predict_many_critics = jax.vmap(estimate_return, in_axes=(None,None,0,None,None))
+    
+    
+    
+#     policy_rollout = jax.tree_map(lambda x: x[i], policy_rollouts)
+    
+#     critics_prediction = predict_many_critics()
+#     predictions = running_result.at[i].set(v)
+#     return (i+1,running_result),None
+
+
+
 
 
 @jax.jit

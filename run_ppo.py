@@ -20,7 +20,7 @@ import wandb
 import numpy as jnp
 from collections import deque
 os.environ["WANDB_API_KEY"]="28996bd59f1ba2c5a8c3f2cc23d8673c327ae230"
-
+np.seterr(all='raise')
 
 def evaluate(
     agent,
@@ -75,7 +75,7 @@ parser.add_argument('--capture_video', action='store_true',default=False, help='
 parser.add_argument('--save_model', action='store_true',default=False, help='whether to save model into the `runs/{run_name}` folder')
 parser.add_argument('--upload_model', action='store_true',default=False, help='whether to upload the saved model to huggingface')
 parser.add_argument('--hf_entity', type=str, default='', help='the user or org name of the model repository from the Hugging Face Hub')
-parser.add_argument('--env_name', type=str, default='Walker2d-v4', help='the id of the environment')
+parser.add_argument('--env_name', type=str, default='Hopper-v5', help='the id of the environment')
 parser.add_argument('--max_steps', type=int, default=1000000, help='total timesteps of the experiments')
 parser.add_argument('--learning_rate', type=float, default=3e-4, help='the learning rate of the optimizer')
 parser.add_argument('--num_envs', type=int, default=1, help='the number of parallel game environments')
@@ -114,7 +114,7 @@ def make_env(env_name, idx, capture_video, run_name, gamma):
         env = gym.wrappers.RecordEpisodeStatistics(env)
         env = gym.wrappers.ClipAction(env)
         env = gym.wrappers.NormalizeObservation(env)
-        env = gym.wrappers.TransformObservation(env, lambda obs: np.clip(obs, -10, 10))
+        env = gym.wrappers.TransformObservation(env, lambda obs: np.clip(obs, -10, 10),env.observation_space)
         if args.normalize_reward :
             env = gym.wrappers.NormalizeReward(env, gamma=gamma)
         env = gym.wrappers.TransformReward(env, lambda reward: np.clip(reward, -10, 10))
@@ -215,7 +215,7 @@ if __name__ == "__main__":
         [make_env(args.env_name, i, args.capture_video, run_name, args.gamma) for i in range(args.num_envs)]
     )
     assert isinstance(envs.single_action_space, gym.spaces.Box), "only continuous action space is supported"
-    eval_env = envpool.make(args.env_name, env_type="gymnasium", num_envs=10)
+    #eval_env = envpool.make(args.env_name, env_type="gymnasium", num_envs=10)
     log_interval = 10000
     unlogged_steps,total_steps = 0,0
     agent = Agent(envs).to(device)
@@ -262,16 +262,14 @@ if __name__ == "__main__":
             next_done = np.logical_or(terminations, truncations)
             rewards[step] = torch.tensor(reward).to(device).view(-1)
             next_obs, next_done = torch.Tensor(next_obs).to(device), torch.Tensor(next_done).to(device)
-
-            if "final_info" in infos:
-                for info in infos["final_info"]:
-                    if info and "episode" in info:
-                        #print(f'unlogged_steps: {unlogged_steps}')
-                        print(f"global_step={global_step}, episodic_return={info['episode']['r']}")
-                        # writer.add_scalar("charts/episodic_return", info["episode"]["r"], global_step)
-                        # writer.add_scalar("charts/episodic_length", info["episode"]["l"], global_step)
-                        wandb.log({"training/episodic_return": info["episode"]["r"]},step=global_step,commit=False)
-                        last_returns.append(info["episode"]["r"])
+            
+            
+            if "episode" in infos.keys():
+                #print(f"global_step={global_step}, episodic_return={infos['episode']['r']}")
+                # writer.add_scalar("charts/episodic_return", infos["episode"]["r"], global_step)
+                # writer.add_scalar("charts/episodic_length", infos["episode"]["l"], global_step)
+                wandb.log({"training/episodic_return": infos["episode"]["r"]},step=global_step,commit=False)
+                last_returns.append(infos["episode"]["r"])
 
         # bootstrap value if not done
         with torch.no_grad():
@@ -359,7 +357,7 @@ if __name__ == "__main__":
             
                     
                     unlogged_steps = 0
-                    eval_metrics = {"evaluation/undisc_policy_return": np.mean(last_returns)}
+                    eval_metrics = {"evaluation/episode.return": np.mean(last_returns)}
                     # _,_,policy_rollout,policy_return,variance,undisc_policy_return,num_steps = rollout_policy_parallel(
                     #                                                 agent,eval_env,None,
                     #                                                 None,None,warmup=False,

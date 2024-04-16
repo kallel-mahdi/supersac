@@ -22,35 +22,35 @@ from collections import deque
 os.environ["WANDB_API_KEY"]="28996bd59f1ba2c5a8c3f2cc23d8673c327ae230"
 np.seterr(all='raise')
 
-def evaluate(
-    agent,
-    make_env,
-    env_id: str,
-    eval_episodes: int,
-    run_name: str,
-    Model: torch.nn.Module,
-    device: torch.device = torch.device("cpu"),
-    capture_video: bool = True,
-    gamma: float = 0.99,
-):
-    envs = gym.vector.SyncVectorEnv([make_env(env_id, 0, capture_video, run_name, gamma)])
-    agent = Model(envs).to(device)
-    agent.eval()
+# def evaluate(
+#     agent,
+#     make_env,
+#     env_id: str,
+#     eval_episodes: int,
+#     run_name: str,
+#     Model: torch.nn.Module,
+#     device: torch.device = torch.device("cpu"),
+#     capture_video: bool = True,
+#     gamma: float = 0.99,
+# ):
+#     envs = gym.vector.SyncVectorEnv([make_env(env_id, 0, capture_video, run_name, gamma)])
+#     agent = Model(envs).to(device)
+#     agent.eval()
 
-    obs, _ = envs.reset()
-    episodic_returns = []
-    while len(episodic_returns) < eval_episodes:
-        actions, _, _, _ = agent.get_action_and_value(torch.Tensor(obs).to(device))
-        next_obs, _, _, _, infos = envs.step(actions.cpu().numpy())
-        if "final_info" in infos:
-            for info in infos["final_info"]:
-                if "episode" not in info:
-                    continue
-                print(f"eval_episode={len(episodic_returns)}, episodic_return={info['episode']['r']}")
-                episodic_returns += [info["episode"]["r"]]
-        obs = next_obs
+#     obs, _ = envs.reset()
+#     episodic_returns = []
+#     while len(episodic_returns) < eval_episodes:
+#         actions, _, _, _ = agent.get_action_and_value(torch.Tensor(obs).to(device))
+#         next_obs, _, _, _, infos = envs.step(actions.cpu().numpy())
+#         if "final_info" in infos:
+#             for info in infos["final_info"]:
+#                 if "episode" not in info:
+#                     continue
+#                 print(f"eval_episode={len(episodic_returns)}, episodic_return={info['episode']['r']}")
+#                 episodic_returns += [info["episode"]["r"]]
+#         obs = next_obs
 
-    return episodic_returns
+#     return episodic_returns
 
 
 def str2bool(v):
@@ -187,7 +187,6 @@ if __name__ == "__main__":
     args.batch_size = int(args.num_envs * args.num_steps)
     args.minibatch_size = int(args.batch_size // args.num_minibatches)
     args.num_iterations = args.max_steps // args.batch_size
-    #run_name = f"{args.env_name}__{args.exp_name}__{args.seed}__{int(time.time())}"
     run_name = f"{args.env_name}__{args.seed}__{int(time.time())}"
     if args.track:
         wandb_config = {
@@ -196,11 +195,7 @@ if __name__ == "__main__":
                 'hyperparam_dict':args.__dict__,
                 }
         wandb_run = setup_wandb(**wandb_config)
-        # writer = SummaryWriter(f"runs/{run_name}")
-        # writer.add_text(
-        #     "hyperparameters",
-        #     "|param|value|\n|-|-|\n%s" % ("\n".join([f"|{key}|{value}|" for key, value in vars(args).items()])),
-        # )
+    
 
     # TRY NOT TO MODIFY: seeding
     random.seed(args.seed)
@@ -265,9 +260,6 @@ if __name__ == "__main__":
             
             
             if "episode" in infos.keys():
-                #print(f"global_step={global_step}, episodic_return={infos['episode']['r']}")
-                # writer.add_scalar("charts/episodic_return", infos["episode"]["r"], global_step)
-                # writer.add_scalar("charts/episodic_length", infos["episode"]["l"], global_step)
                 wandb.log({"training/episodic_return": infos["episode"]["r"]},step=global_step,commit=False)
                 last_returns.append(infos["episode"]["r"])
 
@@ -354,46 +346,13 @@ if __name__ == "__main__":
         explained_var = np.nan if var_y == 0 else 1 - np.var(y_true - y_pred) / var_y
         
         if unlogged_steps >= log_interval:
-            
-                    
-                    unlogged_steps = 0
-                    eval_metrics = {"evaluation/episode.return": np.mean(last_returns)}
-                    # _,_,policy_rollout,policy_return,variance,undisc_policy_return,num_steps = rollout_policy_parallel(
-                    #                                                 agent,eval_env,None,
-                    #                                                 None,None,warmup=False,
-                    #                                                 num_rollouts=10,random=False,
-                    #                                                 discount = args.gamma,max_length=1000)
-                    
-                    # eval_metrics = {"policy_return": policy_return,"std": jnp.sqrt(variance),"undisc_policy_return": undisc_policy_return}
-                    # eval_metrics = {f'evaluation/{k}': v for k, v in eval_metrics.items()}
-                    # episodic_returns = evaluate(
-                    # agent,
-                    # make_env,
-                    # args.env_name,
-                    # eval_episodes=10,
-                    # run_name=f"{run_name}-eval",
-                    # Model=Agent,
-                    # device=device,
-                    # gamma=args.gamma,
-                    # )
-                    # eval_metrics = {'evaluation/episodic_return':np.mean(episodic_returns)}
-                    wandb.log(eval_metrics, step=int(total_steps),commit=True)
-                
+    
+            unlogged_steps = 0
+            eval_metrics = {"evaluation/episode.return": np.mean(last_returns)}
+            wandb.log(eval_metrics, step=int(total_steps),commit=True)
+        
                     
 
-        # TRY NOT TO MODIFY: record rewards for plotting purposes
-        # writer.add_scalar("charts/learning_rate", optimizer.param_groups[0]["lr"], global_step)
-        # writer.add_scalar("losses/value_loss", v_loss.item(), global_step)
-        # writer.add_scalar("losses/policy_loss", pg_loss.item(), global_step)
-        # writer.add_scalar("losses/entropy", entropy_loss.item(), global_step)
-        # writer.add_scalar("losses/old_approx_kl", old_approx_kl.item(), global_step)
-        # writer.add_scalar("losses/approx_kl", approx_kl.item(), global_step)
-        # writer.add_scalar("losses/clipfrac", np.mean(clipfracs), global_step)
-        # writer.add_scalar("losses/explained_variance", explained_var, global_step)
-        # print("SPS:", int(global_step / (time.time() - start_time)))
-        # writer.add_scalar("charts/SPS", int(global_step / (time.time() - start_time)), global_step)
-    
       
     envs.close()
-    #writer.close()
     wandb_run.finish()

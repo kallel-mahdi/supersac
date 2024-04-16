@@ -152,7 +152,10 @@ class SACAgent(flax.struct.PyTreeNode):
         
         ### Reset  the weights of worst performing critic
         mask = jnp.zeros(( agent.config["num_critics"],))
-        if agent.config['num_critics']>1: mask.at[jnp.argmin(R2)].set(1)
+        
+        if agent.config['adaptive_critics']: 
+            mask = mask.at[jnp.argmin(R2)].set(1)
+            
         rngs = jax.random.split(agent.rng, agent.config["num_critics"])    
         reset = lambda rng,params : agent.critic.init(rng,agent.config["observations"], agent.config["actions"])["params"]
         no_reset = lambda rng,params : params
@@ -248,6 +251,7 @@ def create_learner(
                 num_critics: int,
                 discount_actor ,
                 discount_entropy,
+                adaptive_critics,
                 entropy_coeff,
                 
                 actor_lr: float = 3e-4,
@@ -292,7 +296,8 @@ def create_learner(
             actions=actions,  
             num_critics = num_critics, 
             discount_actor = discount_actor, 
-            discount_entropy = discount_entropy,  
+            discount_entropy = discount_entropy,
+            adaptive_critics = adaptive_critics,
             #critic_def = critic_def,    
         ))
 
@@ -371,6 +376,7 @@ def train(args):
                     discount=args.gamma,
                     discount_actor=args.discount_actor,
                     discount_entropy=args.discount_entropy,
+                    adaptive_critics=args.adaptive_critics,
                     num_critics= args.num_critics,
                     entropy_coeff=args.entropy_coeff,
                     temp_lr=args.temp_lr,
@@ -420,11 +426,10 @@ def train(args):
                         
                     ### Update critic weights ## 
                     logging.debug('update critic weights')
-                    if len(policy_rollouts)>=20 and args.adaptive_critics:   
+                    if len(policy_rollouts)>=20 and agent.config["adaptive_critics"]:   
                     
                         flattened_rollouts = flatten_rollouts(policy_rollouts)
                         R2,bias = evaluate_many_critics(agent,policy_rollout.policy_return,flattened_rollouts)
-                        
                         R2_train_info = {'R2/max': jnp.max(R2),'R2/bias': bias[jnp.argmax(R2)],
                                         "R2/histogram": wandb.Histogram(jnp.clip(R2,a_min=-1,a_max=1)),
                                         }
@@ -472,7 +477,7 @@ def train(args):
                         #                                                 num_rollouts=10,random=True,
                         #                                                 discount = args.gamma,max_length=1000)
                         
-                        policy_fn = partial(supply_rng(agent.sample_actions), temperature=0.)
+                        policy_fn = partial(supply_rng(agent.sample_actions), temperature=1.)
                         eval_metrics = evaluate(policy_fn, eval_env, num_episodes=10)
 
                         #eval_metrics = {"policy_return": policy_return,"std": jnp.sqrt(variance),"undisc_policy_return": undisc_policy_return}
@@ -486,7 +491,6 @@ def train(args):
                         print('clearing cache')
             
     wandb_run.finish()
-    
 
 train(args)
 #%%

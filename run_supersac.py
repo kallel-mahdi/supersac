@@ -45,21 +45,20 @@ os.environ['TF_CUDNN_DETERMINISTIC'] = '1'
 parser = argparse.ArgumentParser()
 parser.add_argument('--algo_name', type=str, default='sac', help='the name of the RL algorithm')
 parser.add_argument('--seed',type=int,default=42) 
-parser.add_argument('--env_name',type=str,default="HalfCheetah-v5") 
+parser.add_argument('--env_name',type=str,default="Swimmer-v5") 
 parser.add_argument('--project_name',type=str,default="delete") 
-parser.add_argument('--gamma',type=float,default=0.99)
-parser.add_argument('--max_steps',type=int,default=1_000_000) 
+parser.add_argument('--gamma',type=float,default=0.995)
+parser.add_argument('--max_steps',type=int,default=2_000_000) 
 parser.add_argument('--num_rollouts',type=int,default=5) 
 parser.add_argument('--num_critics',type=int,default=5)     
 parser.add_argument('--adaptive_critics',type=str2bool,default=True) 
 parser.add_argument('--discount_entropy',type=str2bool,default=True) 
 parser.add_argument('--discount_actor',type=str2bool,default=True) 
-parser.add_argument('--max_episode_steps',type=int,default=500) 
+parser.add_argument('--max_episode_steps',type=int,default=1000) 
 parser.add_argument('--entropy_coeff',type=float,default=1.) 
 parser.add_argument('--actor_lr',type=float,default=3e-4) 
 parser.add_argument('--temp_lr',type=float,default=3e-4) 
-parser.add_argument('--healthy_reward',type=float,default=1.) 
-
+parser.add_argument('--healthy_reward',type=float,default=0.5)
 
 args = parser.parse_args()
 
@@ -147,14 +146,16 @@ class SACAgent(flax.struct.PyTreeNode):
         
         return agent
     
-    @jax.jit
-    def update_critics_seq(agent,batches,R2):
+    #@jax.jit
+    partial(jax.jit, static_argnums=(3,))
+    def update_critics_seq(agent,batches,R2,reset):
         
         ### Reset  the weights of worst performing critic
         mask = jnp.zeros(( agent.config["num_critics"],))
         
-        if agent.config['adaptive_critics']: 
-            mask = mask.at[jnp.argmin(R2)].set(1)
+        if agent.config['adaptive_critics'] and reset: 
+            
+                mask = mask.at[jnp.argmin(R2)].set(1)
             
         rngs = jax.random.split(agent.rng, agent.config["num_critics"])    
         reset = lambda rng,params : agent.critic.init(rng,agent.config["observations"], agent.config["actions"])["params"]
@@ -192,6 +193,7 @@ class SACAgent(flax.struct.PyTreeNode):
             
             q = masks *q
             log_probs = masks * log_probs
+            
             
             if agent.config['discount_actor']:
                 actor_loss = (discounts*(log_probs * agent.temp() - q)).sum()/(discounts.sum())
@@ -342,7 +344,7 @@ def train(args):
     
     
     ### HalfCheetah does not have healthy_reward argument
-    if 'HalfCheetah' in args.env_name:
+    if 'HalfCheetah' in args.env_name or 'Swimmer' in args.env_name:
         env = EpisodeMonitor(gym.make(args.env_name,max_episode_steps=args.max_episode_steps))
     else:
         print(f'env_name: {args.env_name}, max_episode_steps: {args.max_episode_steps}, healthy_reward: {args.healthy_reward}')
@@ -416,13 +418,12 @@ def train(args):
                 if replay_buffer.size > start_steps:
                 
                     ### Update critics ###:
-                    
                     logging.debug('update critics')
                     transitions = replay_buffer.get_all()
                     idxs = jax.random.choice(agent.rng,a=transitions['observations'].shape[0], shape=(5000,256), replace=True)
                     batches = jax.vmap(lambda i: jax.tree_map(lambda x: x[i], transitions))(idxs)
-                    agent = agent.update_critics_seq(batches,R2)
-                
+                    reset = jnp.min(R2) < 0.
+                    agent = agent.update_critics_seq(batches,R2,reset)
                         
                     ### Update critic weights ## 
                     logging.debug('update critic weights')
@@ -436,7 +437,8 @@ def train(args):
                         wandb.log(R2_train_info, step=int(i),commit=False)
                     
                     ### Update actor ###
-                    actor_batch = actor_buffer.get_all()    
+                    actor_batch = actor_buffer.get_all()  
+                    #print(actor_batch['discounts'].sum(),actor_batch['masks'].sum())
                     agent, actor_update_info = agent.update_actor(actor_batch,R2)    
                     critic_update_info = {}
                     update_info = {**critic_update_info, **actor_update_info}
@@ -477,7 +479,7 @@ def train(args):
                         #                                                 num_rollouts=10,random=True,
                         #                                                 discount = args.gamma,max_length=1000)
                         
-                        policy_fn = partial(supply_rng(agent.sample_actions), temperature=1.)
+                        policy_fn = partial(supply_rng(agent.sample_actions), temperature=0.)
                         eval_metrics = evaluate(policy_fn, eval_env, num_episodes=10)
 
                         #eval_metrics = {"policy_return": policy_return,"std": jnp.sqrt(variance),"undisc_policy_return": undisc_policy_return}

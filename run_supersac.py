@@ -367,7 +367,7 @@ def train(args):
         discounts=1.0,
     )
 
-    replay_buffer = ReplayBuffer.create(example_transition, size=int(1e5))
+    replay_buffer = ReplayBuffer.create(example_transition, size=int(1e6))
     actor_buffer = ActorReplayBuffer.create(example_transition, size=int(args.num_rollouts*args.max_episode_steps))
 
     agent = create_learner(args.seed,
@@ -392,7 +392,7 @@ def train(args):
     exploration_rng = jax.random.PRNGKey(0)
     i = 0
     unlogged_steps,cached_steps = 0,0
-    policy_rollouts = deque([], maxlen=20)
+    policy_rollouts = deque([], maxlen=25)
     warmup = True
     R2,bias = jnp.ones(args.num_critics),jnp.zeros(args.num_critics)
 
@@ -427,7 +427,7 @@ def train(args):
                         
                     ### Update critic weights ## 
                     logging.debug('update critic weights')
-                    if len(policy_rollouts)>=20 and agent.config["adaptive_critics"]:   
+                    if len(policy_rollouts)>=25 and agent.config["adaptive_critics"]:   
                     
                         flattened_rollouts = flatten_rollouts(policy_rollouts)
                         R2,bias = evaluate_many_critics(agent,policy_rollout.policy_return,flattened_rollouts)

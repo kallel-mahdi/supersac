@@ -65,20 +65,20 @@ os.environ['TF_CUDNN_DETERMINISTIC'] = '1'
 parser = argparse.ArgumentParser()
 parser.add_argument('--algo_name', type=str, default='sac', help='the name of the RL algorithm')
 parser.add_argument('--seed',type=int,default=42) 
-parser.add_argument('--env_name',type=str,default="Hopper-v5") 
+parser.add_argument('--env_name',type=str,default="Walker2d-v5") 
 parser.add_argument('--project_name',type=str,default="delete") 
-parser.add_argument('--gamma',type=float,default=0.99)
+parser.add_argument('--gamma',type=float,default=0.995)
 parser.add_argument('--max_steps',type=int,default=1_000_000) 
 parser.add_argument('--num_rollouts',type=int,default=5) 
 parser.add_argument('--num_critics',type=int,default=5)     
 parser.add_argument('--adaptive_critics',type=str2bool,default=True) 
 parser.add_argument('--discount_entropy',type=str2bool,default=True) 
 parser.add_argument('--discount_actor',type=str2bool,default=True) 
-parser.add_argument('--max_episode_steps',type=int,default=500) 
+parser.add_argument('--max_episode_steps',type=int,default=1000) 
 parser.add_argument('--entropy_coeff',type=float,default=1.) 
 parser.add_argument('--actor_lr',type=float,default=3e-4) 
 parser.add_argument('--temp_lr',type=float,default=3e-4) 
-parser.add_argument('--healthy_reward',type=float,default=1.)
+parser.add_argument('--healthy_reward',type=float,default=0.5)
 parser.add_argument('--use_momentum',type=bool,default=False)
 
 args = parser.parse_args()
@@ -173,11 +173,24 @@ class SACAgent(flax.struct.PyTreeNode):
     
     #@jax.jit
     partial(jax.jit, static_argnums=(3,))
-    def update_critics_seq(agent,batches):
+    def update_critics_seq(agent,batches,R2,reset):
+        
+        ### Reset  the weights of worst performing critic
+        mask = jnp.zeros(( agent.config["num_critics"],))
+        
+        if agent.config['adaptive_critics'] and reset: 
+            
+                mask = mask.at[jnp.argmin(R2)].set(1)
+            
+        rngs = jax.random.split(agent.rng, agent.config["num_critics"])    
+        reset = lambda rng,params : agent.critic.init(rng,agent.config["observations"], agent.config["actions"])["params"]
+        no_reset = lambda rng,params : params
+        f= lambda mask,rng,params : lax.cond(mask,reset,no_reset,rng,params)
+        new_critic_params = jax.vmap(f,in_axes=(0,0,0))(mask,rngs,agent.critic.params)
         
         ### Reset optimizers 
-        new_opt_state = jax.vmap(agent.critic.tx.init)(agent.critic.params)
-        new_critics = agent.critic.replace(params=agent.critic.params,opt_state=new_opt_state)
+        new_opt_state = jax.vmap(agent.critic.tx.init)(new_critic_params)
+        new_critics = agent.critic.replace(params=new_critic_params,opt_state=new_opt_state)
         agent = agent.replace(critic=new_critics)
         ### Train critic sequentially
         agent,batches = jax.lax.fori_loop(0,5000,body,(agent,batches))
@@ -198,7 +211,10 @@ class SACAgent(flax.struct.PyTreeNode):
             call_one_critic = lambda observations,actions,params: agent.critic(observations,actions,params=params)
             q_r_all,q_e_all = jax.vmap(call_one_critic,in_axes=(None,None,0))(observations, actions,agent.critic.params)##critic_update_info
             q_weights = jax.nn.softmax(R2,axis=0)
+            #print('q_weights',q_weights)
+            
             q_r = jnp.sum(q_weights.reshape(-1,1)*q_r_all,axis=0)
+            #print('q_r',q_r.shape)
             q_e = jnp.mean(q_e_all,axis=0)
             q = q_r + q_e
             
@@ -284,7 +300,7 @@ def create_learner(
 
         action_dim = actions.shape[-1]
         actor_def = Policy(hidden_dims, action_dim=action_dim,
-            state_dependent_std=True, tanh_squash_distribution=True)
+            state_dependent_std=True, tanh_squash_distribution=True,final_fc_init_scale=1.0)
 
         critic_def = Critic(hidden_dims)
         critic_keys  = jax.random.split(critic_key, num_critics)
@@ -433,7 +449,7 @@ def train(args):
                     # idxs = jax.random.choice(agent.rng,a=transitions['observations'].shape[0], shape=(5000,256), replace=True)
                     # batches = jax.vmap(lambda i: jax.tree_map(lambda x: x[i], transitions))(idxs)
                     batches = generate_batches(agent.rng,transitions)
-                    agent = agent.update_critics_seq(batches)
+                    agent = agent.update_critics_seq(batches,R2,reset=jnp.argmin(R2)<=0)
                         
                     ### Update critic weights ## 
                     logging.debug('update critic weights')

@@ -82,6 +82,7 @@ parser.add_argument('--healthy_reward',type=float,default=0.5)
 parser.add_argument('--use_momentum',type=bool,default=False)
 
 args = parser.parse_args()
+print(f'args: {args.adaptive_critics}')
 
 hidden_dims = (256,256)
 # cfg = itertools.product([args.seed],[args.env_name],[args.project_name],[args.algo_name],
@@ -176,18 +177,19 @@ class SACAgent(flax.struct.PyTreeNode):
     def update_critics_seq(agent,batches,R2,reset):
         
         ### Reset  the weights of worst performing critic
-        mask = jnp.zeros(( agent.config["num_critics"],))
+        # mask = jnp.zeros(( agent.config["num_critics"],))
         
-        if agent.config['adaptive_critics'] and reset: 
+        # if agent.config['adaptive_critics'] and reset: 
             
-                mask = mask.at[jnp.argmin(R2)].set(1)
+        #         mask = mask.at[jnp.argmin(R2)].set(1)
             
-        rngs = jax.random.split(agent.rng, agent.config["num_critics"])    
-        reset = lambda rng,params : agent.critic.init(rng,agent.config["observations"], agent.config["actions"])["params"]
-        no_reset = lambda rng,params : params
-        f= lambda mask,rng,params : lax.cond(mask,reset,no_reset,rng,params)
-        new_critic_params = jax.vmap(f,in_axes=(0,0,0))(mask,rngs,agent.critic.params)
-        
+        # rngs = jax.random.split(agent.rng, agent.config["num_critics"])    
+        # reset = lambda rng,params : agent.critic.init(rng,agent.config["observations"], agent.config["actions"])["params"]
+        # no_reset = lambda rng,params : params
+        # f= lambda mask,rng,params : lax.cond(mask,reset,no_reset,rng,params)
+        # new_critic_params = jax.vmap(f,in_axes=(0,0,0))(mask,rngs,agent.critic.params)
+        new_critic_params = agent.critic.params
+
         ### Reset optimizers 
         new_opt_state = jax.vmap(agent.critic.tx.init)(new_critic_params)
         new_critics = agent.critic.replace(params=new_critic_params,opt_state=new_opt_state)
@@ -300,7 +302,7 @@ def create_learner(
 
         action_dim = actions.shape[-1]
         actor_def = Policy(hidden_dims, action_dim=action_dim,
-            state_dependent_std=True, tanh_squash_distribution=True,final_fc_init_scale=1.0)
+            state_dependent_std=True, tanh_squash_distribution=True,final_fc_init_scale=0.01)
 
         critic_def = Critic(hidden_dims)
         critic_keys  = jax.random.split(critic_key, num_critics)
@@ -419,7 +421,7 @@ def train(args):
     exploration_rng = jax.random.PRNGKey(0)
     i = 0
     unlogged_steps,cached_steps = 0,0
-    policy_rollouts = deque([], maxlen=20)
+    policy_rollouts = deque([], maxlen=30)
     warmup = True
     R2,bias = jnp.ones(args.num_critics),jnp.zeros(args.num_critics)
     
@@ -453,7 +455,7 @@ def train(args):
                         
                     ### Update critic weights ## 
                     logging.debug('update critic weights')
-                    if len(policy_rollouts)>=20 and agent.config["adaptive_critics"]:   
+                    if len(policy_rollouts)>=15 and agent.config["adaptive_critics"]:   
                     
                         flattened_rollouts = flatten_rollouts(policy_rollouts)
                         R2,bias = evaluate_many_critics(agent,policy_rollout.policy_return,flattened_rollouts)

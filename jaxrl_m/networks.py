@@ -28,12 +28,12 @@ import jax.numpy as jnp
 ###############################
 
 
-# def default_init(scale: Optional[float] = jnp.sqrt(2.0)):
+def default_init(scale: Optional[float] = jnp.sqrt(2.0)):
 
-#     return nn.initializers.orthogonal(scale)
+    return nn.initializers.orthogonal(scale)
 
-def default_init(scale: Optional[float] = 1.0):
-    return nn.initializers.variance_scaling(scale, "fan_avg", "uniform")
+# def default_init(scale: Optional[float] = 1.0):
+#     return nn.initializers.variance_scaling(scale, "fan_avg", "uniform")
 
 
 class MLP(nn.Module):

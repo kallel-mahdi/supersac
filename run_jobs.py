@@ -17,8 +17,8 @@ def str2bool(v):
 parser = argparse.ArgumentParser()
 parser.add_argument('--seed',type=int,default=42) 
 parser.add_argument('--env_name',type=str,default="Hopper-v5") 
-parser.add_argument('--project_name',type=str,default="v5_macmac_relu") 
-parser.add_argument('--gamma',type=float,default=0.995)
+parser.add_argument('--project_name',type=str,default="v5_macmac_tanh") 
+parser.add_argument('--gamma',type=float,default=0.99)
 parser.add_argument('--max_steps',type=int,default=2_000_000) 
 parser.add_argument('--num_rollouts',type=int,default=5) 
 parser.add_argument('--num_critics',type=int,default=5) 
@@ -26,8 +26,8 @@ parser.add_argument('--adaptive_critics',type=str2bool,default=True)
 parser.add_argument('--discount_entropy',type=str2bool,default=True) 
 parser.add_argument('--discount_actor',type=str2bool,default=True) 
 parser.add_argument('--entropy_coeff',type=float,default=1.) 
-parser.add_argument('--max_episode_steps',type=int,default=1000) 
-parser.add_argument('--healthy_reward',type=float,default=0.5) 
+parser.add_argument('--max_episode_steps',type=int,default=500) 
+parser.add_argument('--healthy_reward',type=float,default=1.) 
 args = parser.parse_args()
 ##############################
 
@@ -43,7 +43,7 @@ for cfg in configs :
     import random
 
     # Add random time pause
-    #time.sleep(random.uniform(0.1,3))
+    # time.sleep(random.uniform(0.1,3))
 
     command = f'sbatch job_file.sh\
     --seed  {cfg[0]} --env_name {cfg[1]} --project_name {cfg[2]} \

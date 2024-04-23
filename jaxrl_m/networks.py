@@ -38,7 +38,7 @@ def default_init(scale: Optional[float] = jnp.sqrt(2.0)):
 
 class MLP(nn.Module):
     hidden_dims: Sequence[int]
-    activations: Callable[[jnp.ndarray], jnp.ndarray] = nn.relu
+    activations: Callable[[jnp.ndarray], jnp.ndarray] = nn.tanh
     activate_final: bool = False
     use_layer_norm: bool = True
     scale_final: Optional[float] = None
@@ -88,10 +88,10 @@ class OriginalCritic(nn.Module):
     def __call__(self, observations: jnp.ndarray, actions: jnp.ndarray,
                 *args,**kwargs) -> jnp.ndarray:
         inputs = jnp.concatenate([observations, actions], -1)
-        critic = MLP((*self.hidden_dims, 2),
+        critic = MLP((*self.hidden_dims,1),
                      use_layer_norm=self.use_layer_norm)(inputs,*args, **kwargs)
         
-        return critic[:,0] , critic[:,1]
+        return critic
 
 
 def ensemblize(cls, num_qs, out_axes=0, **kwargs):

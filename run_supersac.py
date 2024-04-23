@@ -65,9 +65,9 @@ os.environ['TF_CUDNN_DETERMINISTIC'] = '1'
 parser = argparse.ArgumentParser()
 parser.add_argument('--algo_name', type=str, default='sac', help='the name of the RL algorithm')
 parser.add_argument('--seed',type=int,default=42) 
-parser.add_argument('--env_name',type=str,default="Walker2d-v5") 
+parser.add_argument('--env_name',type=str,default="InvertedPendulum-v4") 
 parser.add_argument('--project_name',type=str,default="delete") 
-parser.add_argument('--gamma',type=float,default=0.995)
+parser.add_argument('--gamma',type=float,default=0.99)
 parser.add_argument('--max_steps',type=int,default=1_000_000) 
 parser.add_argument('--num_rollouts',type=int,default=5) 
 parser.add_argument('--num_critics',type=int,default=5)     
@@ -78,7 +78,7 @@ parser.add_argument('--max_episode_steps',type=int,default=1000)
 parser.add_argument('--entropy_coeff',type=float,default=1.) 
 parser.add_argument('--actor_lr',type=float,default=3e-4) 
 parser.add_argument('--temp_lr',type=float,default=3e-4) 
-parser.add_argument('--healthy_reward',type=float,default=0.5)
+parser.add_argument('--healthy_reward',type=float,default=1.)
 parser.add_argument('--use_momentum',type=bool,default=False)
 
 args = parser.parse_args()
@@ -107,6 +107,7 @@ from jaxrl_m.networks import Policy, Critic, ensemblize
 import flax
 import flax.linen as nn
 from functools import partial
+jax.config.update("jax_debug_nans", True)
 
 
 
@@ -379,7 +380,8 @@ def train(args):
     
     
     ### HalfCheetah does not have healthy_reward argument
-    if 'HalfCheetah' in args.env_name or 'Swimmer' in args.env_name:
+    if any(substring in args.env_name for substring in ['HalfCheetah', 'Swimmer', 'Pendulum']):
+        
         env = EpisodeMonitor(gym.make(args.env_name,max_episode_steps=args.max_episode_steps))
     else:
         print(f'env_name: {args.env_name}, max_episode_steps: {args.max_episode_steps}, healthy_reward: {args.healthy_reward}')
@@ -458,7 +460,7 @@ def train(args):
                     if len(policy_rollouts)>=15 and agent.config["adaptive_critics"]:   
                     
                         flattened_rollouts = flatten_rollouts(policy_rollouts)
-                        R2,bias = evaluate_many_critics(agent,policy_rollout.policy_return,flattened_rollouts)
+                        R2,bias = evaluate_many_critics(agent,policy_rollout.policy_return,flattened_rollouts,agent.config["num_critics"])
                         R2_train_info = {'R2/max': jnp.max(R2),'R2/bias': bias[jnp.argmax(R2)],
                                         "R2/histogram": wandb.Histogram(jnp.clip(R2,a_min=-1,a_max=1)),
                                         }

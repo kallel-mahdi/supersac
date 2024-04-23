@@ -13,6 +13,14 @@ def f(anc_agent,obs,actor_params,critic_params,seed):
     q,_ = anc_agent.critic(obs, actions,params=critic_params)
    
     return q
+
+# def f(anc_agent,obs,actor_params,critic_params,seed):
+
+#     dist = anc_agent.actor(obs, params=actor_params)
+#     actions, _ = dist.sample_and_log_prob(seed=seed)
+#     q1,q2 = anc_agent.critic(obs, actions,params=critic_params)
+#     q = jnp.mean(jnp.stack([q1,q2]),axis=0)
+#     return q
     
 @jax.jit
 def estimate_return(acq_rollout,
@@ -58,7 +66,7 @@ def estimate_return(acq_rollout,
 
 
 
-@jax.jit
+#@jax.jit
 def evaluate_one_critic(anc_critic_params,
                         anc_agent,
                         anc_return,policy_rollouts,seed):
@@ -68,22 +76,22 @@ def evaluate_one_critic(anc_critic_params,
                    anc_critic_params =anc_critic_params,
                    anc_return = anc_return,seed=seed)
     y_pred,y = jax.vmap(predict_rollout)(policy_rollouts)
-    variances = policy_rollouts.variance
+    variances = jnp.clip(policy_rollouts.variance,1e-6)
     weights = 1/variances
     a2 = (weights * ((y-y_pred)**2)).sum()
     b2 = (weights * ((y-y.mean())**2)).sum()
-    b2=jnp.clip(b2,1e-8)
+    b2=jnp.clip(b2,1e-6)
+    print('b2',b2)
     R2 = 1-(a2/b2)  
     bias = (y_pred-y).mean()
     
     return R2,bias
 
-#@jax.jit
-def evaluate_many_critics(anc_agent, anc_return, policy_rollouts):
+#@partial(jax.jit, static_argnums=(3,))
+def evaluate_many_critics(anc_agent, anc_return, policy_rollouts,num_critics):
     
     seed = anc_agent.rng
     anc_critic_params = anc_agent.critic.params
-    num_critics = 5 ###HOTFIX
     tmp = partial(evaluate_one_critic,
                 anc_agent=anc_agent,
                 anc_return=anc_return,
@@ -104,3 +112,24 @@ def evaluate_many_critics(anc_agent, anc_return, policy_rollouts):
     #R2, bias = jax.vmap(tmp)(anc_critic_params)
     
     return R2, bias
+
+# def evaluate_many_critics(anc_agent, anc_return, policy_rollouts,num_critics):
+    
+#     seed = anc_agent.rng
+#     anc_critic_params = anc_agent.critic.params
+#     num_critics = 5 ###HOTFIX
+#     tmp = partial(evaluate_one_critic,
+#                 anc_agent=anc_agent,
+#                 anc_return=anc_return,
+#                 policy_rollouts=policy_rollouts, seed=seed)
+
+#     ### Evaluating over all critics causes O.O.M error
+#     ### We do it sequentially as it's not a bottleneck
+#     R2_l, bias_l = [], []
+    
+#     critic_params =anc_agent.critic.params
+#     R2, bias = tmp(critic_params)
+#     R2_l.append(R2)
+#     bias_l.append(bias)
+    
+#     return R2, bias

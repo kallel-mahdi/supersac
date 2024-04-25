@@ -76,12 +76,11 @@ def evaluate_one_critic(anc_critic_params,
                    anc_critic_params =anc_critic_params,
                    anc_return = anc_return,seed=seed)
     y_pred,y = jax.vmap(predict_rollout)(policy_rollouts)
-    variances = jnp.clip(policy_rollouts.variance,1e-6)
+    variances = policy_rollouts.variance
     weights = 1/variances
     a2 = (weights * ((y-y_pred)**2)).sum()
     b2 = (weights * ((y-y.mean())**2)).sum()
     b2=jnp.clip(b2,1e-6)
-    print('b2',b2)
     R2 = 1-(a2/b2)  
     bias = (y_pred-y).mean()
     

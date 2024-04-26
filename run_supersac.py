@@ -343,6 +343,7 @@ def train(args):
     max_steps = args.max_steps
     start_steps = 10000
     log_interval = 10000
+    n_grads = 0
 
     wandb_config = {
         'project': args.project_name,
@@ -452,6 +453,7 @@ def train(args):
                     agent, actor_update_info = agent.update_actor(actor_batch,R2)    
                     critic_update_info = {}
                     update_info = {**critic_update_info, **actor_update_info}
+                    n_grads += 1
                     
                     ### Log training info ###
                     exploration_metrics = {f'exploration/disc_return': policy_return,'training/std': jnp.sqrt(variance)}
@@ -494,6 +496,7 @@ def train(args):
 
                         #eval_metrics = {"policy_return": policy_return,"std": jnp.sqrt(variance),"undisc_policy_return": undisc_policy_return}
                         eval_metrics = {f'evaluation/{k}': v for k, v in eval_metrics.items()}
+                        eval_metrics['n_grads']=int(n_grads)
                         wandb.log(eval_metrics, step=int(i),commit=True)
                         unlogged_steps = 0
                 

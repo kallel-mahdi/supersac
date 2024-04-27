@@ -64,6 +64,7 @@ parser.add_argument('--healthy_reward',type=float,default=1.)
 
 args = parser.parse_args()
 
+NUM_UPDATES = args.max_episode_steps*args.num_rollouts
 hidden_dims = (256,256)
 # cfg = itertools.product([args.seed],[args.env_name],[args.project_name],[args.algo_name],
 #                         [args.learning_rate],[args.lengthscale_bound],
@@ -154,22 +155,23 @@ class SACAgent(flax.struct.PyTreeNode):
     def update_critics_seq(agent,batches,R2):
         
         ### Reset  the weights of worst performing critic
-        mask = jnp.zeros(( agent.config["num_critics"],))
+        # mask = jnp.zeros(( agent.config["num_critics"],))
         
-        if agent.config['adaptive_critics']: 
-            mask = mask.at[jnp.argmin(R2)].set(1)
+        # if agent.config['adaptive_critics']: 
+        #     mask = mask.at[jnp.argmin(R2)].set(1)
             
-        rngs = jax.random.split(agent.rng, agent.config["num_critics"])    
-        reset = lambda rng,params : agent.critic.init(rng,agent.config["observations"], agent.config["actions"])["params"]
-        no_reset = lambda rng,params : params
-        f= lambda mask,rng,params : lax.cond(mask,reset,no_reset,rng,params)
-        new_critic_params = jax.vmap(f,in_axes=(0,0,0))(mask,rngs,agent.critic.params)
+        # rngs = jax.random.split(agent.rng, agent.config["num_critics"])    
+        # reset = lambda rng,params : agent.critic.init(rng,agent.config["observations"], agent.config["actions"])["params"]
+        # no_reset = lambda rng,params : params
+        # f= lambda mask,rng,params : lax.cond(mask,reset,no_reset,rng,params)
+        # new_critic_params = jax.vmap(f,in_axes=(0,0,0))(mask,rngs,agent.critic.params)
+        new_critic_params = agent.critic.params
         ### Reset optimizers 
         new_opt_state = jax.vmap(agent.critic.tx.init)(new_critic_params)
         new_critics = agent.critic.replace(params=new_critic_params,opt_state=new_opt_state)
         agent = agent.replace(critic=new_critics)
         ### Train critic sequentially
-        agent,batches = jax.lax.fori_loop(0,5000,body,(agent,batches))
+        agent,batches = jax.lax.fori_loop(0,NUM_UPDATES,body,(agent,batches))
         
         return agent
 
@@ -432,7 +434,7 @@ def train(args):
                     
                     logging.debug('update critics')
                     transitions = replay_buffer.get_all()
-                    idxs = jax.random.choice(agent.rng,a=transitions['observations'].shape[0], shape=(5000,256), replace=True)
+                    idxs = jax.random.choice(agent.rng,a=transitions['observations'].shape[0], shape=(NUM_UPDATES,256), replace=True)
                     batches = jax.vmap(lambda i: jax.tree_map(lambda x: x[i], transitions))(idxs)
                     agent = agent.update_critics_seq(batches,R2)
                 
@@ -442,7 +444,7 @@ def train(args):
                     if len(policy_rollouts)>=20 and agent.config["adaptive_critics"]:   
                     
                         flattened_rollouts = flatten_rollouts(policy_rollouts)
-                        R2,bias = evaluate_many_critics(agent,policy_rollout.policy_return,flattened_rollouts)
+                        R2,bias = evaluate_many_critics(agent,policy_rollout.policy_return,flattened_rollouts,args.num_critics)
                         R2_train_info = {'R2/max': jnp.max(R2),'R2/bias': bias[jnp.argmax(R2)],
                                         "R2/histogram": wandb.Histogram(jnp.clip(R2,a_min=-1,a_max=1)),
                                         }

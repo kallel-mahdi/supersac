@@ -45,21 +45,21 @@ os.environ['TF_CUDNN_DETERMINISTIC'] = '1'
 parser = argparse.ArgumentParser()
 parser.add_argument('--algo_name', type=str, default='sac', help='the name of the RL algorithm')
 parser.add_argument('--seed',type=int,default=42) 
-parser.add_argument('--env_name',type=str,default="Ant-v5") 
+parser.add_argument('--env_name',type=str,default="Walker2d-v5") 
 parser.add_argument('--project_name',type=str,default="delete") 
 parser.add_argument('--gamma',type=float,default=0.99)
-parser.add_argument('--max_steps',type=int,default=1_000_000) 
-parser.add_argument('--num_rollouts',type=int,default=5) 
-parser.add_argument('--num_critics',type=int,default=5)     
-parser.add_argument('--adaptive_critics',type=str2bool,default=False) 
+parser.add_argument('--max_steps',type=int,default=2_000_000) 
+parser.add_argument('--num_rollouts',type=int,default=2) 
+parser.add_argument('--num_critics',type=int,default=2)     
 parser.add_argument('--discount_entropy',type=str2bool,default=True) 
 parser.add_argument('--discount_actor',type=str2bool,default=True)
 parser.add_argument('--use_momentum',type=str2bool,default=False) 
-parser.add_argument('--max_episode_steps',type=int,default=500) 
+parser.add_argument('--adaptive_critics',type=str2bool,default=False) 
+parser.add_argument('--max_episode_steps',type=int,default=1000) 
 parser.add_argument('--entropy_coeff',type=float,default=1.) 
 parser.add_argument('--actor_lr',type=float,default=3e-4) 
-parser.add_argument('--temp_lr',type=float,default=3e-4) 
-parser.add_argument('--healthy_reward',type=float,default=1.) 
+parser.add_argument('--temp_lr',type=float,default=3e-4)
+parser.add_argument('--healthy_reward',type=float,default=0.5) 
 
 
 args = parser.parse_args()
@@ -361,6 +361,8 @@ def train(args):
     else:
         print(f'env_name: {args.env_name}, max_episode_steps: {args.max_episode_steps}, healthy_reward: {args.healthy_reward}')
         env = EpisodeMonitor(gym.make(args.env_name,max_episode_steps=args.max_episode_steps,healthy_reward=args.healthy_reward))
+    
+    env = gym.wrappers.NormalizeReward(env, gamma=args.gamma)
     eval_env = EpisodeMonitor(gym.make(args.env_name,max_episode_steps=1000))
     
     # env = EpisodeMonitor(gym.make(args.env_name,max_episode_steps=args.max_episode_steps))
@@ -379,7 +381,7 @@ def train(args):
         discounts=1.0,
     )
 
-    replay_buffer = ReplayBuffer.create(example_transition, size=int(1e5))
+    replay_buffer = ReplayBuffer.create(example_transition, size=int(50_000))
     actor_buffer = ActorReplayBuffer.create(example_transition, size=int(args.num_rollouts*args.max_episode_steps))
 
     agent = create_learner(args.seed,
@@ -417,7 +419,7 @@ def train(args):
                 warmup=(i < start_steps)
                 
                 logging.debug('policy rollout')
-                replay_buffer,actor_buffer,policy_rollout,policy_return,variance,undisc_policy_return,num_steps = rollout_policy(
+                replay_buffer,actor_buffer,policy_rollout,policy_return,variance,undisc_policy_return,num_steps = rollout_policy2(
                                                                         agent,env,exploration_rng,
                                                                         replay_buffer,actor_buffer,warmup=warmup,
                                                                         num_rollouts=args.num_rollouts,discount = args.gamma,max_length=args.max_episode_steps)
@@ -425,10 +427,11 @@ def train(args):
                 if not warmup : policy_rollouts.append(policy_rollout)
                 unlogged_steps += num_steps
                 cached_steps += num_steps
+                
                 i+=num_steps
                 pbar.update(int(num_steps))
                 
-                if replay_buffer.size > start_steps:
+                if replay_buffer.size >= start_steps:
                 
                     ### Update critics ###:
                     

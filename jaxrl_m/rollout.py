@@ -178,26 +178,98 @@ def rollout_policy(agent,env,exploration_rng,
     return replay_buffer,actor_buffer,policy_rollout,policy_return,variance,undisc_policy_return,n_steps
 
 
-def rollout_policy2(agent,env,exploration_rng,
-                   replay_buffer,actor_buffer,
-                   warmup=False,num_rollouts=5,random=False,discount=0.99,max_length=500):
+
+def rollout_policy_del(agent,env,exploration_rng,
+                   replay_buffer=None,actor_buffer=None,
+                   warmup=False,num_rollouts=5,discount=0.99,max_length=500):
     
-    
-    actor_buffer.reset()
+    if actor_buffer is not None:
+        actor_buffer = actor_buffer.reset()
     obs,_ = env.reset()  
     n_steps,n_rollouts,episode_step,disc,mask = 0,0,0,1.,1.
-    old_last_done,last_done = 0,0
     max_steps = num_rollouts*max_length
-    observations,disc_masks,masks,rewards = np.zeros((max_steps,obs.shape[0])),np.zeros((max_steps,)),np.zeros((max_steps,)),np.zeros((max_steps,))
-    policy_returns = []
+    observations,disc_masks,rewards = np.zeros((max_steps,obs.shape[0])),np.zeros((max_steps,)),np.zeros((max_steps,))
+    policy_returns = np.zeros((num_rollouts,))
     
+    while n_steps < num_rollouts:
+        
+        if warmup:
+            action = env.action_space.sample()
+        else:
+            exploration_rng, key = jax.random.split(exploration_rng)
+            action = agent.sample_actions(obs,seed=exploration_rng)
+        
+        next_obs, reward, done, truncated, info = env.step(action)
+        
+        mask = float(not done)
+
+        transition = dict(observations=obs,actions=action,
+            rewards=reward,masks=mask,next_observations=next_obs,discounts=disc)
+        
+        if replay_buffer is not None:
+            replay_buffer.add_transition(transition)
+        
+        if actor_buffer is not None:
+            actor_buffer.add_transition(transition)
+    
+        observations[max_length*n_rollouts+episode_step] = obs
+        disc_masks[max_length*n_rollouts+episode_step] = disc
+        rewards[max_length*n_rollouts+episode_step] = reward
+        
+        obs = next_obs
+        disc *= (discount*mask)
+        episode_step += 1
+        n_steps += 1
+        
+        if (done or truncated) :
+            policy_returns[n_rollouts] = (disc_masks[max_length*n_rollouts:max_length*(n_rollouts+1)]*rewards[max_length*n_rollouts:max_length*(n_rollouts+1)]).sum()
+            obs,_= env.reset()
+            n_rollouts += 1
+            episode_step = 0
+            disc,mask = 1.,1.
+            
+
+    policy_return = policy_returns.mean()
+    variance = policy_returns.var()
+    undisc_policy_return = rewards.sum()/num_rollouts
+    policy_rollout = PolicyRollout( policy_params=agent.actor.params,
+                                    policy_return=policy_return,
+                                    variance=variance,
+                                    observations=observations,
+                                    disc_masks=disc_masks,
+                                    num_rollouts=jnp.array(num_rollouts))
+    
+    return replay_buffer,actor_buffer,policy_rollout,policy_return,variance,undisc_policy_return,n_steps
+
+
+
+
+def rollout_policy2(agent,env,exploration_rng,
+                   replay_buffer=None,actor_buffer=None,
+                   warmup=False,num_rollouts=5,discount=0.99,max_length=500):
+    
+    
+    actor_buffer = actor_buffer.reset()
+    obs,_ = env.reset()  
+    n_steps,n_rollouts,episode_step,disc,mask = 0,0,0,1.,1.
+    max_steps = num_rollouts*max_length
+    observations,disc_masks,rewards = np.zeros((max_steps,obs.shape[0])),np.zeros((max_steps,)),np.zeros((max_steps,))
+    #policy_returns = np.zeros((num_rollouts,))
+    policy_returns,undisc_returns = [],[]
+    policy_return,undisc_return = 0.,0.
     while n_steps < max_steps:
         
-    
-        exploration_rng, key = jax.random.split(exploration_rng)
-        action = agent.sample_actions(obs,exploration_rng,random)
-    
+        if warmup:
+            action = env.action_space.sample()
+        else:
+            exploration_rng, key = jax.random.split(exploration_rng)
+            action = agent.sample_actions(obs,seed=exploration_rng)
+        
         next_obs, reward, done, truncated, info = env.step(action)
+
+        policy_return += reward * disc
+        undisc_return += reward
+        
         mask = float(not done)
 
         transition = dict(observations=obs,actions=action,
@@ -206,10 +278,9 @@ def rollout_policy2(agent,env,exploration_rng,
         replay_buffer.add_transition(transition)
         actor_buffer.add_transition(transition)
     
-        observations[n_steps] = obs
-        disc_masks[n_steps] = disc*mask
-        rewards[n_steps] = reward
-        masks[n_steps] = mask
+        # observations[max_length*n_rollouts+episode_step] = obs
+        # disc_masks[max_length*n_rollouts+episode_step] = disc
+        # rewards[max_length*n_rollouts+episode_step] = reward
         
         obs = next_obs
         disc *= (discount*mask)
@@ -217,37 +288,89 @@ def rollout_policy2(agent,env,exploration_rng,
         n_steps += 1
         
         if (done or truncated) :
-            policy_returns.append((disc_masks[last_done:last_done+episode_step]*rewards[last_done:last_done+episode_step]).sum())
+            #policy_returns[n_rollouts] = (disc_masks[max_length*n_rollouts:max_length*(n_rollouts+1)]*rewards[max_length*n_rollouts:max_length*(n_rollouts+1)]).sum()
+            policy_returns.append(policy_return)
+            undisc_returns.append(undisc_return)
+            policy_return,undisc_return = 0.,0.
             obs,_= env.reset()
             n_rollouts += 1
             episode_step = 0
             disc,mask = 1.,1.
-            last_done = n_steps
             
 
-    observations = observations[:last_done]
-    observations = jnp.pad(observations, ((0, max_steps - len(observations)), (0, 0)), mode='constant', constant_values=0)
-    
-    disc_masks = disc_masks[:last_done]
-    disc_masks = jnp.pad(disc_masks, (0, max_steps - len(disc_masks)), mode='constant', constant_values=0)
-    
-    rewards = rewards[:last_done]
-    rewards = jnp.pad(rewards, (0, max_steps - len(rewards)), mode='constant', constant_values=0)
-    
-    policy_returns = jnp.array(policy_returns)
-    
-    undisc_policy_return = (masks*rewards).sum()/n_rollouts
-
- 
+    policy_returns = np.array(policy_returns)
     policy_return = policy_returns.mean()
     variance = policy_returns.var()
-    #print(f'policy_returns {policy_returns} policy_return {policy_return} variance {variance} undisc_policy_return {undisc_policy_return}')
-    undisc_policy_return = (rewards).sum()/n_rollouts
+    undisc_return = np.array(undisc_returns).mean()
+   
+    
+    policy_rollout = None
+    return replay_buffer,actor_buffer,policy_rollout,policy_return,variance,undisc_return,n_steps
+
+
+
+def rollout_policy_lqr(agent,env,exploration_rng,
+                   replay_buffer=None,actor_buffer=None,
+                   warmup=False,num_rollouts=5,discount=0.99,max_length=500):
+    
+    if actor_buffer is not None:
+        actor_buffer = actor_buffer.reset()
+    #obs,_ = env.reset()  
+    obs = env.reset()
+    n_steps,n_rollouts,episode_step,disc,mask = 0,0,0,1.,1.
+    max_steps = num_rollouts*max_length
+    observations,disc_masks,rewards = np.zeros((max_steps,obs.shape[0])),np.zeros((max_steps,)),np.zeros((max_steps,))
+    policy_returns = np.zeros((num_rollouts,))
+    
+    while n_rollouts < num_rollouts:
+        
+        if warmup:
+            action = env.action_space.sample()
+        else:
+            exploration_rng, key = jax.random.split(exploration_rng)
+            action = agent.sample_actions(obs,seed=exploration_rng)
+        
+        #next_obs, reward, done, truncated, info = env.step(action)
+        next_obs, reward, done, info = env.step(action)
+        
+        mask = float(not done)
+
+        transition = dict(observations=obs,actions=action,
+            rewards=reward,masks=mask,next_observations=next_obs,discounts=disc)
+        
+        if replay_buffer is not None:
+            replay_buffer.add_transition(transition)
+        
+        if actor_buffer is not None:
+            actor_buffer.add_transition(transition)
+    
+        observations[max_length*n_rollouts+episode_step] = obs
+        disc_masks[max_length*n_rollouts+episode_step] = disc
+        rewards[max_length*n_rollouts+episode_step] = reward
+        
+        obs = next_obs
+        disc *= (discount*mask)
+        episode_step += 1
+        n_steps += 1
+        truncated = episode_step >= max_length
+        
+        if (done or truncated) :
+        
+            policy_returns[n_rollouts] = (disc_masks[max_length*n_rollouts:max_length*(n_rollouts+1)]*rewards[max_length*n_rollouts:max_length*(n_rollouts+1)]).sum()
+            obs= env.reset()
+            n_rollouts += 1
+            episode_step = 0
+            disc,mask = 1.,1.
+            
+
+    policy_return = policy_returns.mean()
+    variance = policy_returns.var()
+    undisc_policy_return = rewards.sum()/num_rollouts
     policy_rollout = PolicyRollout( policy_params=agent.actor.params,
                                     policy_return=policy_return,
                                     variance=variance,
                                     observations=observations,
                                     disc_masks=disc_masks,
-                                    num_rollouts=jnp.array(n_rollouts))
+                                    num_rollouts=jnp.array(num_rollouts))
     
     return replay_buffer,actor_buffer,policy_rollout,policy_return,variance,undisc_policy_return,n_steps

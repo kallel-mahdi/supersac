@@ -20,15 +20,17 @@ parser.add_argument('--env_name',type=str,default="Hopper-v5")
 parser.add_argument('--project_name',type=str,default="finishitto_995") 
 parser.add_argument('--gamma',type=float,default=0.995)
 parser.add_argument('--max_steps',type=int,default=2_000_000) 
-parser.add_argument('--num_rollouts',type=int,default=5) 
-parser.add_argument('--num_critics',type=int,default=5) 
-parser.add_argument('--adaptive_critics',type=str2bool,default=False) 
+parser.add_argument('--num_rollouts',type=int,default=4) 
+parser.add_argument('--num_critics',type=int,default=4) 
+
 parser.add_argument('--discount_entropy',type=str2bool,default=True) 
 parser.add_argument('--discount_actor',type=str2bool,default=True) 
 parser.add_argument('--use_momentum',type=str2bool,default=False) 
+parser.add_argument('--adaptive_critics',type=str2bool,default=False) 
+
 parser.add_argument('--entropy_coeff',type=float,default=1.) 
-parser.add_argument('--max_episode_steps',type=int,default=1000) 
-parser.add_argument('--healthy_reward',type=float,default=0.5) 
+parser.add_argument('--max_episode_steps',type=int,default=500) 
+parser.add_argument('--healthy_reward',type=float,default=1.) 
 args = parser.parse_args()
 ##############################
 

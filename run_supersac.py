@@ -45,7 +45,7 @@ os.environ['TF_CUDNN_DETERMINISTIC'] = '1'
 parser = argparse.ArgumentParser()
 parser.add_argument('--algo_name', type=str, default='sac', help='the name of the RL algorithm')
 parser.add_argument('--seed',type=int,default=42) 
-parser.add_argument('--env_name',type=str,default="Walker2d-v5") 
+parser.add_argument('--env_name',type=str,default="Hopper-v5") 
 parser.add_argument('--project_name',type=str,default="delete") 
 parser.add_argument('--gamma',type=float,default=0.995)
 parser.add_argument('--max_steps',type=int,default=2_000_000) 
@@ -59,7 +59,7 @@ parser.add_argument('--max_episode_steps',type=int,default=1000)
 parser.add_argument('--entropy_coeff',type=float,default=1.) 
 parser.add_argument('--actor_lr',type=float,default=3e-4) 
 parser.add_argument('--temp_lr',type=float,default=3e-4)
-parser.add_argument('--healthy_reward',type=float,default=0.5) 
+parser.add_argument('--healthy_reward',type=float,default=1.) 
 
 
 args = parser.parse_args()

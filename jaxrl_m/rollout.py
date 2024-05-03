@@ -164,7 +164,7 @@ def rollout_policy(agent,env,exploration_rng,
             episode_step = 0
             disc,mask = 1.,1.
             
-
+            
     policy_return = policy_returns.mean()
     variance = policy_returns.var()
     undisc_policy_return = rewards.sum()/num_rollouts

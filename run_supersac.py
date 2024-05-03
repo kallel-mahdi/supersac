@@ -127,7 +127,7 @@ class SACAgent(flax.struct.PyTreeNode):
                         next_q  = agent.critic(batch['next_observations'], next_actions,params=critic_params)
                         
                         target_q = batch['rewards'] + agent.config['discount'] * batch['masks'] * next_q
-                        #target_q = target_q - agent.config['discount'] * batch['masks'] * next_log_probs * agent.temp()
+                        target_q = target_q - agent.config['discount'] * batch['masks'] * next_log_probs * agent.temp()
                         target_q = jax.lax.stop_gradient(target_q)
                         
                         q = agent.critic(batch['observations'], batch['actions'],params=critic_params)

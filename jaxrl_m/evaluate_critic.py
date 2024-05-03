@@ -10,7 +10,8 @@ def f(anc_agent,obs,actor_params,critic_params,seed):
 
     dist = anc_agent.actor(obs, params=actor_params)
     actions, _ = dist.sample_and_log_prob(seed=seed)
-    q,_ = anc_agent.critic(obs, actions,params=critic_params)
+    #q,_ = anc_agent.critic(obs, actions,params=critic_params)
+    q = anc_agent.critic(obs, actions,params=critic_params)
    
     return q
 

@@ -88,10 +88,10 @@ class OriginalCritic(nn.Module):
     def __call__(self, observations: jnp.ndarray, actions: jnp.ndarray,
                 *args,**kwargs) -> jnp.ndarray:
         inputs = jnp.concatenate([observations, actions], -1)
-        critic = MLP((*self.hidden_dims,1),
+        critic = MLP((*self.hidden_dims,2),
                      use_layer_norm=self.use_layer_norm)(inputs,*args, **kwargs)
         
-        return critic
+        return critic[:,0]
 
 
 def ensemblize(cls, num_qs, out_axes=0, **kwargs):
@@ -124,6 +124,7 @@ class Policy(nn.Module):
     log_std_max: Optional[float] = 2
     tanh_squash_distribution: bool = True
     state_dependent_std: bool = True
+    use_bias : bool = True
     final_fc_init_scale: float = 1e-2
 
     @nn.compact
@@ -136,11 +137,11 @@ class Policy(nn.Module):
         )(observations)
 
         means = nn.Dense(
-            self.action_dim, kernel_init=default_init(self.final_fc_init_scale)
+            self.action_dim, kernel_init=default_init(self.final_fc_init_scale),use_bias=self.use_bias,name="means"
         )(outputs)
         if self.state_dependent_std:
             log_stds = nn.Dense(
-                self.action_dim, kernel_init=default_init(self.final_fc_init_scale)
+                self.action_dim, kernel_init=default_init(self.final_fc_init_scale),use_bias=self.use_bias,name="log_stds"
             )(outputs)
         else:
             log_stds = self.param("log_stds", nn.initializers.zeros, (self.action_dim,))

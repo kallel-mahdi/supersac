@@ -391,7 +391,7 @@ def train(args):
         discounts=1.0,
     )
 
-    replay_buffer = ReplayBuffer.create(example_transition, size=int(50_000))
+    replay_buffer = ReplayBuffer.create(example_transition, size=int(100_000))
     actor_buffer = ActorReplayBuffer.create(example_transition, size=int(args.num_rollouts*args.max_episode_steps))
 
     agent = create_learner(args.seed,

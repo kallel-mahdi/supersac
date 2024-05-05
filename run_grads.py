@@ -49,7 +49,7 @@ os.environ['TF_CUDNN_DETERMINISTIC'] = '1'
 parser = argparse.ArgumentParser()
 parser.add_argument('--algo_name', type=str, default='sac', help='the name of the RL algorithm')
 parser.add_argument('--seed',type=int,default=42) 
-parser.add_argument('--env_name',type=str,default="HalfCheetah-v5") 
+parser.add_argument('--env_name',type=str,default="Walker2d-v5") 
 parser.add_argument('--project_name',type=str,default="GRADS") 
 parser.add_argument('--gamma',type=float,default=0.99)
 parser.add_argument('--max_steps',type=int,default=1_000_000) 
@@ -402,7 +402,7 @@ else:
     print(f'env_name: {args.env_name}, max_episode_steps: {args.max_episode_steps}, healthy_reward: {args.healthy_reward}')
     env = EpisodeMonitor(gym.make(args.env_name,max_episode_steps=args.max_episode_steps,healthy_reward=args.healthy_reward))
 
-env = gym.wrappers.NormalizeReward(env, gamma=args.gamma)
+#env = gym.wrappers.NormalizeReward(env, gamma=args.gamma)
 eval_env = EpisodeMonitor(gym.make(args.env_name,max_episode_steps=1000))
 
 
@@ -440,7 +440,7 @@ agent = create_learner(args.seed,
 exploration_metrics = dict()
 obs,info = env.reset()    
 exploration_rng = jax.random.PRNGKey(0)
-i = 0
+i,plot = 0,0
 unlogged_steps,cached_steps = 0,0
 policy_rollouts = deque([], maxlen=20)
 warmup = True
@@ -465,6 +465,7 @@ with tqdm.tqdm(total=args.max_steps) as pbar:
             cached_steps += num_steps
             
             i+=num_steps
+            plot+=num_steps
             pbar.update(int(num_steps))
             
             if replay_buffer.size >= start_steps:
@@ -477,8 +478,8 @@ with tqdm.tqdm(total=args.max_steps) as pbar:
                 batches = jax.vmap(lambda i: jax.tree_map(lambda x: x[i], transitions))(idxs)
                 agent = agent.update_critics_seq(batches,R2,big=False)
             
-            
-                if i%50_000==0 and i>50_000:
+                if plot>=50_000:
+                    plot = 0
                     big_buffer = big_buffer.reset()
                     big_buffer,_,_,_,_,undisc_policy_return,num_steps = rollout_policy(
                                                                     agent,env,exploration_rng,

@@ -45,22 +45,22 @@ os.environ['TF_CUDNN_DETERMINISTIC'] = '1'
 parser = argparse.ArgumentParser()
 parser.add_argument('--algo_name', type=str, default='sac', help='the name of the RL algorithm')
 parser.add_argument('--seed',type=int,default=42) 
-parser.add_argument('--env_name',type=str,default="Hopper-v5") 
-parser.add_argument('--project_name',type=str,default="delete") 
+parser.add_argument('--env_name',type=str,default="Walker2d-v5") 
+parser.add_argument('--project_name',type=str,default="iclr") 
 parser.add_argument('--gamma',type=float,default=0.995)
 parser.add_argument('--max_steps',type=int,default=2_000_000) 
 parser.add_argument('--num_rollouts',type=int,default=5) 
 parser.add_argument('--num_critics',type=int,default=5)     
+parser.add_argument('--on_policy_data',type=str2bool,default=False)
 parser.add_argument('--discount_actor',type=str2bool,default=True)
 parser.add_argument('--discount_entropy',type=str2bool,default=True) 
 parser.add_argument('--use_momentum',type=str2bool,default=False) 
 parser.add_argument('--adaptive_critics',type=str2bool,default=False) 
 parser.add_argument('--max_episode_steps',type=int,default=1000) 
-parser.add_argument('--entropy_coeff',type=float,default=1.) 
+parser.add_argument('--entropy_coeff',type=float,default=0.75) 
 parser.add_argument('--actor_lr',type=float,default=3e-4) 
 parser.add_argument('--temp_lr',type=float,default=3e-4)
-parser.add_argument('--healthy_reward',type=float,default=1.) 
-
+parser.add_argument('--healthy_reward',type=float,default=0.75) 
 
 args = parser.parse_args()
 NUM_UPDATES = args.max_episode_steps*args.num_rollouts
@@ -178,8 +178,6 @@ class SACAgent(flax.struct.PyTreeNode):
             #q_all = q_all.squeeze()
             q_weights = jax.nn.softmax(R2,axis=0)
             q = jnp.sum(q_weights.reshape(-1,1)*q_all,axis=0)
-            print('aaaaa',q_all.shape,q_weights.shape)
-            print('qqqqqqqqqqqqqq',q.shape)
 
             
             ### Pad Q and logits because actor buffer is padded ###
@@ -359,8 +357,8 @@ def train(args):
         next_observations=env.observation_space.sample(),
         discounts=1.0,
     )
-
-    replay_buffer = ReplayBuffer.create(example_transition, size=int(100_000))
+    buffer_size = args.num_rollouts*args.max_episode_steps if args.on_policy_data else 100_000
+    replay_buffer = ReplayBuffer.create(example_transition, size=int(buffer_size))
     actor_buffer = ActorReplayBuffer.create(example_transition, size=int(args.num_rollouts*args.max_episode_steps))
 
     agent = create_learner(args.seed,
@@ -398,6 +396,7 @@ def train(args):
                 warmup=(i < start_steps)
                 
                 logging.debug('policy rollout')
+                if args.on_policy_data: replay_buffer = replay_buffer.reset()
                 replay_buffer,actor_buffer,policy_rollout,policy_return,variance,undisc_policy_return,num_steps = rollout_policy(
                                                                         agent,env,exploration_rng,
                                                                         replay_buffer,actor_buffer,warmup=warmup,

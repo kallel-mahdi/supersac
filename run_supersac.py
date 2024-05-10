@@ -51,7 +51,7 @@ parser.add_argument('--gamma',type=float,default=0.995)
 parser.add_argument('--max_steps',type=int,default=2_000_000) 
 parser.add_argument('--num_rollouts',type=int,default=5) 
 parser.add_argument('--num_critics',type=int,default=5)     
-parser.add_argument('--on_policy_data',type=str2bool,default=False)
+parser.add_argument('--on_policy_data',type=str2bool,default=True)
 parser.add_argument('--discount_actor',type=str2bool,default=True)
 parser.add_argument('--discount_entropy',type=str2bool,default=True) 
 parser.add_argument('--use_momentum',type=str2bool,default=False) 
@@ -409,7 +409,7 @@ def train(args):
                 i+=num_steps
                 pbar.update(int(num_steps))
                 
-                if replay_buffer.size >= start_steps:
+                if i >= start_steps:
                 
                     ### Update critics ###:
                     logging.debug('update critics')

@@ -3,7 +3,6 @@ import numpy as np
 import jax.numpy as jnp
 import flax
 
-PRNGKey = Any
 Params = flax.core.FrozenDict[str, Any]
 PRNGKey = Any
 Shape = Sequence[int]

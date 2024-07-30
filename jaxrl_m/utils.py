@@ -1,8 +1,10 @@
+import argparse
 import functools
+from functools import partial
+
 import jax
 import jax.numpy as jnp
-from functools import partial
-import argparse
+
 
 def str2bool(v):
     if isinstance(v, bool):
@@ -14,7 +16,12 @@ def str2bool(v):
     else:
         raise argparse.ArgumentTypeError('Boolean value expected.')
     
-    
+
+def none_or_str(value):
+    if value == 'None':
+        return None
+    return value
+
 def compute_q(anc_agent,obs,actor_params,critic_params):
 
     actions = anc_agent.actor(obs, params=actor_params)

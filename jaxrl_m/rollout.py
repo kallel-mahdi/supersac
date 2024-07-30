@@ -254,14 +254,15 @@ def rollout_policy_lqr(agent,env,exploration_rng,
     
     if actor_buffer is not None:
         actor_buffer = actor_buffer.reset()
-    #obs,_ = env.reset()  
-    obs = env.reset()
+    obs = env.reset()  
     n_steps,n_rollouts,episode_step,disc,mask = 0,0,0,1.,1.
+
     max_steps = num_rollouts*max_length
     observations,disc_masks,rewards = np.zeros((max_steps,obs.shape[0])),np.zeros((max_steps,)),np.zeros((max_steps,))
     policy_returns = np.zeros((num_rollouts,))
     
     while n_rollouts < num_rollouts:
+        
         
         if warmup:
             action = env.action_space.sample()
@@ -269,7 +270,6 @@ def rollout_policy_lqr(agent,env,exploration_rng,
             exploration_rng, key = jax.random.split(exploration_rng)
             action = agent.sample_actions(obs,seed=exploration_rng)
         
-        #next_obs, reward, done, truncated, info = env.step(action)
         next_obs, reward, done, info = env.step(action)
         
         mask = float(not done)
@@ -282,6 +282,8 @@ def rollout_policy_lqr(agent,env,exploration_rng,
         
         if actor_buffer is not None:
             actor_buffer.add_transition(transition)
+
+        #print("n_rollouts",n_rollouts,"done",done)
     
         observations[max_length*n_rollouts+episode_step] = obs
         disc_masks[max_length*n_rollouts+episode_step] = disc
@@ -291,17 +293,16 @@ def rollout_policy_lqr(agent,env,exploration_rng,
         disc *= (discount*mask)
         episode_step += 1
         n_steps += 1
-        truncated = episode_step >= max_length
         
-        if (done or truncated) :
-        
+        if done or n_steps%500==0:
             policy_returns[n_rollouts] = (disc_masks[max_length*n_rollouts:max_length*(n_rollouts+1)]*rewards[max_length*n_rollouts:max_length*(n_rollouts+1)]).sum()
-            obs= env.reset()
+            obs = env.reset()
             n_rollouts += 1
             episode_step = 0
             disc,mask = 1.,1.
+          
             
-
+            
     policy_return = policy_returns.mean()
     variance = policy_returns.var()
     undisc_policy_return = rewards.sum()/num_rollouts
@@ -313,3 +314,6 @@ def rollout_policy_lqr(agent,env,exploration_rng,
                                     num_rollouts=jnp.array(num_rollouts))
     
     return replay_buffer,actor_buffer,policy_rollout,policy_return,variance,undisc_policy_return,n_steps
+
+
+

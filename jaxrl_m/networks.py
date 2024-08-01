@@ -36,15 +36,18 @@ def default_init(scale: Optional[float] = jnp.sqrt(2.0)):
 #     return nn.initializers.variance_scaling(scale, "fan_avg", "uniform")
 
 
+
+
+
 class MLP(nn.Module):
     hidden_dims: Sequence[int]
     activations: Callable[[jnp.ndarray], jnp.ndarray] = nn.tanh
     activate_final: bool = False
-    use_layer_norm: bool = True
+    use_layer_norm: bool = False
     scale_final: Optional[float] = None
 
     @nn.compact
-    def __call__(self, x: jnp.ndarray) -> jnp.ndarray:
+    def __call__(self, x: jnp.ndarray,train=False) -> jnp.ndarray:
 
         for i, size in enumerate(self.hidden_dims):
             if i + 1 == len(self.hidden_dims) and self.scale_final is not None:
@@ -134,6 +137,7 @@ class Policy(nn.Module):
         outputs = MLP(
             self.hidden_dims,
             activate_final=True,
+            use_layer_norm=True,
         )(observations)
 
         means = nn.Dense(

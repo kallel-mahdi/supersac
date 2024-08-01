@@ -21,13 +21,13 @@ os.environ['TF_CUDNN_DETERMINISTIC'] = '1'
 ##############################
 parser = argparse.ArgumentParser()
 parser.add_argument('--algo_name', type=str, default='sac', help='the name of the RL algorithm')
-parser.add_argument('--seed',type=int,default=42) 
+parser.add_argument('--seed',type=int,default=21) 
 parser.add_argument('--env_name',type=str,default="Walker2d-v5") 
 parser.add_argument('--project_name',type=str,default="delete") 
 parser.add_argument('--gamma',type=float,default=0.99)
 parser.add_argument('--max_steps',type=int,default=2_000_000) 
 parser.add_argument('--num_rollouts',type=int,default=5) 
-parser.add_argument('--num_critics',type=int,default=5)     
+parser.add_argument('--num_critics',type=int,default=2)     
 parser.add_argument('--on_policy_data',type=str2bool,default=True)
 parser.add_argument('--discount_actor',type=str2bool,default=True)
 parser.add_argument('--discount_entropy',type=str2bool,default=True) 
@@ -94,7 +94,7 @@ def train(args):
     else:
         print(f'env_name: {args.env_name}, max_episode_steps: {args.max_episode_steps}, healthy_reward: {args.healthy_reward}')
         env = gym.make(args.env_name, max_episode_steps=args.max_episode_steps, healthy_reward=args.healthy_reward)
-        env = NormalizeReward(env)
+        #env = NormalizeReward(env)
         #env = EpisodeMonitor(env)
     
     eval_env = EpisodeMonitor(gym.make(args.env_name,max_episode_steps=1000))
@@ -189,20 +189,18 @@ def train(args):
                     
                     if unlogged_steps >= log_interval:
                         
-                        # _,_,policy_rollout,policy_return,variance,undisc_policy_return,num_steps = rollout_policy(
-                        #                                                 agent,eval_env,exploration_rng,
-                        #                                                 None,None,warmup=False,
-                        #                                                 num_rollouts=10,random=True,
-                        #                                                 discount = args.gamma,max_length=1000)
-                        #eval_metrics = {"policy_return": policy_return,"std": jnp.sqrt(variance),"undisc_policy_return": undisc_policy_return}
+                        _,_,policy_rollout,policy_return,variance,undisc_policy_return,num_steps = rollout_policy(
+                                                                        agent,eval_env,exploration_rng,
+                                                                        None,None,warmup=False,
+                                                                        num_rollouts=10,
+                                                                        discount = args.gamma,max_length=1000)
+                        eval_metrics = {"policy_return": policy_return,"std": jnp.sqrt(variance),"undisc_policy_return": undisc_policy_return}
 
-                        policy_fn = partial(supply_rng(agent.sample_actions), temperature=1.)
-                        eval_metrics = evaluate(policy_fn, eval_env, num_episodes=10)
+                        # policy_fn = partial(supply_rng(agent.sample_actions), temperature=1.)
+                        # eval_metrics = evaluate(policy_fn, eval_env, num_episodes=10)
                         eval_metrics = {f'evaluation/{k}': v for k, v in eval_metrics.items()}
-                        
-                        
                         eval_metrics['n_grads']=int(n_grads)
-                        #eval_step = np.round(i/ 10000) * 10000
+
                         eval_step = i
                         wandb.log(eval_metrics, step=int(eval_step),commit=True)
                         unlogged_steps = 0

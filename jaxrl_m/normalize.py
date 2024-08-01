@@ -153,5 +153,5 @@ class NormalizeReward(gym.core.Wrapper, gym.utils.RecordConstructorArgs):
     def normalize(self, rews):
         """Normalizes the rewards with the running mean rewards and their variance."""
         self.return_rms.update(self.returns)
-        #return (rews-self.return_rms.mean) / np.sqrt(self.return_rms.var + self.epsilon)
-        return rews / np.sqrt(self.return_rms.var + self.epsilon)
+        return (rews-self.return_rms.mean) / np.sqrt(self.return_rms.var + self.epsilon)
+        #return rews / np.sqrt(self.return_rms.var + self.epsilon)

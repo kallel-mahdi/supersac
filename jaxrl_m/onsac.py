@@ -93,12 +93,17 @@ class SACAgent(flax.struct.PyTreeNode):
         new_rng, curr_key, next_key = jax.random.split(agent.rng, 3)
 
         def actor_loss_fn(actor_params,R2):
-            observations = jnp.repeat(batch['observations'], 10, axis=0)
-            discounts = jnp.repeat(batch['discounts'], 10, axis=0)
-            masks = jnp.int32(jnp.repeat(batch['masks'], 10, axis=0))
+            # observations = jnp.repeat(batch['observations'], 10, axis=0)
+            # discounts = jnp.repeat(batch['discounts'], 10, axis=0)
+            # masks = jnp.int32(jnp.repeat(batch['masks'], 10, axis=0))
+
+            observations = batch['observations']
+            discounts = batch['discounts']
+            masks = batch['masks']
 
             dist = agent.actor(observations, params=actor_params)
             actions, log_probs = dist.sample_and_log_prob(seed=curr_key)
+            #log_probs = dist.log_prob(actions)
             call_one_critic = lambda observations,actions,params: agent.critic(observations,actions,params=params)
             q_all = jax.vmap(call_one_critic,in_axes=(None,None,0))(observations, actions,agent.critic.params)##critic_update_info
             
@@ -204,7 +209,8 @@ def create_learner(
         else:
             temp = TrainState.create(temp_def, temp_params, tx=optax.adam(learning_rate=temp_lr,b1=0))
             actor = TrainState.create(actor_def, actor_params, tx=optax.adam(learning_rate=actor_lr,b1=0))
-        
+            # temp = TrainState.create(temp_def, temp_params, tx=optax.rmsprop(learning_rate=temp_lr))
+            # actor = TrainState.create(actor_def, actor_params, tx=optax.rmsprop(learning_rate=actor_lr))
             
         if target_entropy is None:
 

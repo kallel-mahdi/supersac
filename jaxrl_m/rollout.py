@@ -134,6 +134,7 @@ def rollout_policy(agent,env,exploration_rng,
         else:
             exploration_rng, key = jax.random.split(exploration_rng)
             action = agent.sample_actions(obs,seed=exploration_rng)
+            
         
         next_obs, reward, done, truncated, info = env.step(action)
         

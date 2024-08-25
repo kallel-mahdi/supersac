@@ -131,9 +131,11 @@ def rollout_policy(agent,env,exploration_rng,
         
         if warmup:
             action = env.action_space.sample()
+            log_p,pre_action = 0.,action
         else:
             exploration_rng, key = jax.random.split(exploration_rng)
-            action = agent.sample_actions(obs,seed=exploration_rng)
+            action,log_p,pre_action = agent.sample_actions(obs,seed=exploration_rng)
+            
             
         
         next_obs, reward, done, truncated, info = env.step(action)
@@ -141,7 +143,8 @@ def rollout_policy(agent,env,exploration_rng,
         mask = float(not done)
 
         transition = dict(observations=obs,actions=action,
-            rewards=reward,masks=mask,next_observations=next_obs,discounts=disc)
+            rewards=reward,masks=mask,next_observations=next_obs,discounts=disc,
+            log_probs=log_p,pre_actions=pre_action)
         
         if replay_buffer is not None:
             replay_buffer.add_transition(transition)

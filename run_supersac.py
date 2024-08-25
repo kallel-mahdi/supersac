@@ -11,6 +11,7 @@ from jaxrl_m.utils import *
 from jaxrl_m.normalize import *
 
 logging.basicConfig(level=logging.CRITICAL)
+#jax.config.update("jax_enable_x64", True)
 
 
 # Set env variables
@@ -21,14 +22,14 @@ os.environ['TF_CUDNN_DETERMINISTIC'] = '1'
 ##############################
 parser = argparse.ArgumentParser()
 parser.add_argument('--algo_name', type=str, default='sac', help='the name of the RL algorithm')
-parser.add_argument('--seed',type=int,default=21) 
+parser.add_argument('--seed',type=int,default=42) 
 parser.add_argument('--env_name',type=str,default="Walker2d-v5") 
-parser.add_argument('--project_name',type=str,default="delete") 
+parser.add_argument('--project_name',type=str,default="delete3") 
 parser.add_argument('--gamma',type=float,default=0.99)
-parser.add_argument('--max_steps',type=int,default=2_000_000) 
+parser.add_argument('--max_steps',type=int,default=1_000_000) 
 parser.add_argument('--num_rollouts',type=int,default=5) 
-parser.add_argument('--num_critics',type=int,default=2)     
-parser.add_argument('--on_policy_data',type=str2bool,default=True)
+parser.add_argument('--num_critics',type=int,default=5)     
+parser.add_argument('--on_policy_data',type=str2bool,default=False)
 parser.add_argument('--discount_actor',type=str2bool,default=True)
 parser.add_argument('--discount_entropy',type=str2bool,default=True) 
 parser.add_argument('--use_momentum',type=str2bool,default=False) 
@@ -106,7 +107,9 @@ def train(args):
         rewards=0.0,
         masks=1.0,
         next_observations=env.observation_space.sample(),
+        pre_actions = env.action_space.sample(),
         discounts=1.0,
+        log_probs=0.,
     )
     buffer_size = args.num_rollouts*args.max_episode_steps if args.on_policy_data else 100_000
     replay_buffer = ReplayBuffer.create(example_transition, size=int(buffer_size))
@@ -172,6 +175,8 @@ def train(args):
                            
                     ### Update actor ###
                     actor_batch = actor_buffer.get_all()    
+                    
+                    #with jax.default_matmul_precision('float32'):
                     agent, actor_update_info = agent.update_actor(actor_batch,R2)    
                     critic_update_info = {}
                     update_info = {**critic_update_info, **actor_update_info}

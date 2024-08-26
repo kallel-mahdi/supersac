@@ -197,7 +197,7 @@ def rollout_policy2(agent,env,exploration_rng,
     n_steps,n_rollouts,episode_step,disc,mask = 0,0,0,1.,1.
     max_steps = num_rollouts*max_length
     observations,disc_masks,rewards = np.zeros((max_steps,obs.shape[0])),np.zeros((max_steps,)),np.zeros((max_steps,))
-    #policy_returns = np.zeros((num_rollouts,))
+    
     policy_returns,undisc_returns = [],[]
     policy_return,undisc_return = 0.,0.
     while n_steps < max_steps:
@@ -224,17 +224,17 @@ def rollout_policy2(agent,env,exploration_rng,
         replay_buffer.add_transition(transition)
         actor_buffer.add_transition(transition)
     
-        # observations[max_length*n_rollouts+episode_step] = obs
-        # disc_masks[max_length*n_rollouts+episode_step] = disc
-        # rewards[max_length*n_rollouts+episode_step] = reward
-        
+        observations[n_steps] = obs
+        disc_masks[n_steps] = disc
+        rewards[n_steps] = reward
+         
         obs = next_obs
         disc *= (discount*mask)
         episode_step += 1
         n_steps += 1
         
         if (done or truncated) :
-            #policy_returns[n_rollouts] = (disc_masks[max_length*n_rollouts:max_length*(n_rollouts+1)]*rewards[max_length*n_rollouts:max_length*(n_rollouts+1)]).sum()
+            #policy_returns(disc_masks[max_length*n_rollouts:max_length*(n_rollouts+1)]*rewards[max_length*n_rollouts:max_length*(n_rollouts+1)]).sum()
             policy_returns.append(policy_return)
             undisc_returns.append(undisc_return)
             policy_return,undisc_return = 0.,0.
@@ -250,7 +250,15 @@ def rollout_policy2(agent,env,exploration_rng,
     undisc_return = np.array(undisc_returns).mean()
    
     
-    policy_rollout = None
+    #policy_rollout = None
+    
+    policy_rollout = PolicyRollout( policy_params=agent.actor.params,
+                                    policy_return=policy_return,
+                                    variance=variance,
+                                    observations=observations,
+                                    disc_masks=disc_masks,
+                                    num_rollouts=jnp.array(num_rollouts))
+    
     return replay_buffer,actor_buffer,policy_rollout,policy_return,variance,undisc_return,n_steps
 
 

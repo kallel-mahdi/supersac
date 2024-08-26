@@ -97,6 +97,8 @@ class SACAgent(flax.struct.PyTreeNode):
     def update_actor(agent, batch: Batch,R2):
         new_rng, curr_key, next_key = jax.random.split(agent.rng, 3)
 
+        R2 = R2.reshape(-1,1)
+        R2 = jax.nn.softmax(R2,axis=0)
         
         def actor_loss_fn(
                 actor_params,
@@ -158,7 +160,7 @@ class SACAgent(flax.struct.PyTreeNode):
         observations = batch["observations"]
         dist = agent.actor(observations)
         
-        j = 5
+        j = 10
         qs,logps = jnp.zeros((2500,)),jnp.zeros((2500,))
         
         call_one_critic = lambda observations,actions,params: agent.critic(observations,actions,params=params)
@@ -171,7 +173,7 @@ class SACAgent(flax.struct.PyTreeNode):
             curr_key,_ = jax.random.split(curr_key)
             actions, log_p = dist.sample_and_log_prob(seed=curr_key)
             q_all = call_many_critics(observations,actions)
-            q = q_all.mean(axis=0)
+            q = jnp.sum(R2*q_all,axis=0)
             qs+=q
             logps+=log_p
             
@@ -181,7 +183,7 @@ class SACAgent(flax.struct.PyTreeNode):
         
         ### Compute advantage for the fixed states AND actions
         q_all = call_many_critics(batch["observations"],batch["actions"])
-        q = jnp.mean(q_all,axis=0)
+        q = jnp.sum(R2*q_all,axis=0)
         
         adv = q-v+ agent.temp() * h
         #adv = q-v
@@ -190,7 +192,7 @@ class SACAgent(flax.struct.PyTreeNode):
             
             new_actor, actor_info = agent.actor.apply_loss_fn(actor_loss_fn,True,adv)
             new_temp, temp_info = agent.temp.apply_loss_fn(temp_loss_fn,True,actor_info['entropy'], agent.config['target_entropy'])
-            #new_temp.params["log_temp"]=jnp.clip(new_temp.params["log_temp"],1e-6,1)
+            #new_temp.params["log_temp"]=jnp.clip(new_temp.params["log_temp"],1e-3,1)
             agent = agent.replace(rng=new_rng, actor=new_actor,temp=new_temp)
         
         return agent, {**actor_info,**temp_info}

@@ -23,7 +23,7 @@ os.environ['TF_CUDNN_DETERMINISTIC'] = '1'
 parser = argparse.ArgumentParser()
 parser.add_argument('--algo_name', type=str, default='sac', help='the name of the RL algorithm')
 parser.add_argument('--seed',type=int,default=42) 
-parser.add_argument('--env_name',type=str,default="Humanoid-v5") 
+parser.add_argument('--env_name',type=str,default="Walker2d-v5") 
 parser.add_argument('--project_name',type=str,default="superppo_kindofworking") 
 parser.add_argument('--gamma',type=float,default=0.99)
 parser.add_argument('--max_steps',type=int,default=1_000_000) 
@@ -77,7 +77,7 @@ def train(args):
     eval_episodes=10
     batch_size = 256
     max_steps = args.max_steps
-    start_steps = 10000
+    start_steps = 0
     log_interval = 10000
     n_grads = 0
 
@@ -177,7 +177,18 @@ def train(args):
                            
                     ### Update actor ###
                     actor_batch = actor_buffer.get_all()    
+                    #if args.adaptive_critics==True:
                     
+                    if len(policy_rollouts)>=10:
+                        
+                        flattened_rollouts = flatten_rollouts(policy_rollouts)
+                        R2,bias = evaluate_many_critics(agent,policy_rollout.policy_return,flattened_rollouts,args.num_critics)
+                        R2_train_info = {'R2/max': jnp.max(R2),'R2/bias': bias[jnp.argmax(R2)],
+                                        "R2/histogram": wandb.Histogram(jnp.clip(R2,a_min=-1,a_max=1)),
+                                        }
+                        wandb.log(R2_train_info, step=int(i),commit=False)
+                        
+                            
                     agent, actor_update_info = agent.update_actor(actor_batch,R2)    
                         
                     critic_update_info = {}

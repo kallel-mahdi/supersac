@@ -204,20 +204,23 @@ def rollout_policy2(agent,env,exploration_rng,
         
         if warmup:
             action = env.action_space.sample()
+            log_p,pre_action = 0.,action
         else:
             exploration_rng, key = jax.random.split(exploration_rng)
-            action = agent.sample_actions(obs,seed=exploration_rng)
+            action,log_p,pre_action = agent.sample_actions(obs,seed=exploration_rng)
+            
         
         next_obs, reward, done, truncated, info = env.step(action)
-
+        
         policy_return += reward * disc
         undisc_return += reward
         
         mask = float(not done)
 
         transition = dict(observations=obs,actions=action,
-            rewards=reward,masks=mask,next_observations=next_obs,discounts=disc)
-        
+            rewards=reward,masks=mask,next_observations=next_obs,discounts=disc,
+            log_probs=log_p,pre_actions=pre_action)
+
         replay_buffer.add_transition(transition)
         actor_buffer.add_transition(transition)
     

@@ -20,6 +20,8 @@ def body(i,val):
 
 class Temperature(nn.Module):
     initial_temperature: float = jnp.log(0.01)
+    #initial_temperature: float = 0.01
+    
 
     
     @nn.compact
@@ -28,6 +30,7 @@ class Temperature(nn.Module):
                               init_fn=lambda key: jnp.full(
                                   (), self.initial_temperature))
         return jnp.exp(log_temp)
+        #return jnp.abs(log_temp)
 
 
 class SACAgent(flax.struct.PyTreeNode):
@@ -114,7 +117,7 @@ class SACAgent(flax.struct.PyTreeNode):
             approx_kl = ((ratio - 1) - logratio).mean()
 
             # Policy loss
-            clip_coef = 0.025 ##default 0.2 (what worked was 0.025)
+            clip_coef = 0.1 ##default 0.2 (what worked was 0.025)
             actor_loss1 = masks*adv * ratio
             actor_loss2 = masks*adv * jnp.clip(ratio, 1 - clip_coef, 1 + clip_coef)
             if agent.config['discount_entropy']:
@@ -183,7 +186,7 @@ class SACAgent(flax.struct.PyTreeNode):
         adv = q-v+ agent.temp() * h
         #adv = q-v
         
-        for i in range(5):
+        for i in range(10):
             
             new_actor, actor_info = agent.actor.apply_loss_fn(actor_loss_fn,True,adv)
             new_temp, temp_info = agent.temp.apply_loss_fn(temp_loss_fn,True,actor_info['entropy'], agent.config['target_entropy'])

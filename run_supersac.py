@@ -23,8 +23,8 @@ os.environ['TF_CUDNN_DETERMINISTIC'] = '1'
 parser = argparse.ArgumentParser()
 parser.add_argument('--algo_name', type=str, default='sac', help='the name of the RL algorithm')
 parser.add_argument('--seed',type=int,default=42) 
-parser.add_argument('--env_name',type=str,default="Walker2d-v5") 
-parser.add_argument('--project_name',type=str,default="delete3") 
+parser.add_argument('--env_name',type=str,default="HalfCheetah-v5") 
+parser.add_argument('--project_name',type=str,default="superppo_kindofworking") 
 parser.add_argument('--gamma',type=float,default=0.99)
 parser.add_argument('--max_steps',type=int,default=1_000_000) 
 parser.add_argument('--num_rollouts',type=int,default=5) 
@@ -151,7 +151,7 @@ def train(args):
                 
                 logging.debug('policy rollout')
                 if args.on_policy_data: replay_buffer = replay_buffer.reset()
-                replay_buffer,actor_buffer,policy_rollout,policy_return,variance,undisc_policy_return,num_steps = rollout_policy(
+                replay_buffer,actor_buffer,policy_rollout,policy_return,variance,undisc_policy_return,num_steps = rollout_policy2(
                                                                         agent,env,exploration_rng,
                                                                         replay_buffer,actor_buffer,warmup=warmup,
                                                                         num_rollouts=args.num_rollouts,discount = args.gamma,max_length=args.max_episode_steps)
@@ -176,8 +176,9 @@ def train(args):
                     ### Update actor ###
                     actor_batch = actor_buffer.get_all()    
                     
-                    #with jax.default_matmul_precision('float32'):
-                    agent, actor_update_info = agent.update_actor(actor_batch,R2)    
+                    with jax.default_matmul_precision('float32'):
+                        agent, actor_update_info = agent.update_actor(actor_batch,R2)    
+                        
                     critic_update_info = {}
                     update_info = {**critic_update_info, **actor_update_info}
                     n_grads += 1

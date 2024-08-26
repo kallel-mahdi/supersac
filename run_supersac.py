@@ -23,7 +23,7 @@ os.environ['TF_CUDNN_DETERMINISTIC'] = '1'
 parser = argparse.ArgumentParser()
 parser.add_argument('--algo_name', type=str, default='sac', help='the name of the RL algorithm')
 parser.add_argument('--seed',type=int,default=42) 
-parser.add_argument('--env_name',type=str,default="Humanoid-v5") 
+parser.add_argument('--env_name',type=str,default="Walker2d-v5") 
 parser.add_argument('--project_name',type=str,default="superppo_kindofworking") 
 parser.add_argument('--gamma',type=float,default=0.99)
 parser.add_argument('--max_steps',type=int,default=1_000_000) 
@@ -77,7 +77,7 @@ def train(args):
     eval_episodes=10
     batch_size = 256
     max_steps = args.max_steps
-    start_steps = 10000
+    start_steps = 0
     log_interval = 10000
     n_grads = 0
 
@@ -177,7 +177,13 @@ def train(args):
                            
                     ### Update actor ###
                     actor_batch = actor_buffer.get_all()    
+                    #if args.adaptive_critics==True:
                     
+                    if len(policy_rollouts)>=10:
+                        
+                        R2,bias = evaluate_many_critics(agent,policy_rollout.policy_return,policy_rollouts,5)
+                        
+                            
                     agent, actor_update_info = agent.update_actor(actor_batch,R2)    
                         
                     critic_update_info = {}
@@ -185,7 +191,7 @@ def train(args):
                     n_grads += 1
                     
                     ### Log training info ###
-                    exploration_metrics = {f'exploration/disc_return': policy_return,'training/std': jnp.sqrt(variance)}
+                    exploration_metrics = {f'exploration/disc_return': policy_return,'training/std': jnp.sqrt(variance),'R2_max':jnp.max(R2)}
                     train_metrics = {f'training/{k}': v for k, v in update_info.items()}
                     train_metrics['training/undisc_return'] = undisc_policy_return
                     

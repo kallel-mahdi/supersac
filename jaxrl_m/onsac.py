@@ -97,7 +97,7 @@ class SACAgent(flax.struct.PyTreeNode):
     def update_actor(agent, batch: Batch,R2):
         new_rng, curr_key, next_key = jax.random.split(agent.rng, 3)
 
-        
+        R2 = R2.reshape(-1,1)
         def actor_loss_fn(
                 actor_params,
                 adv,
@@ -171,7 +171,7 @@ class SACAgent(flax.struct.PyTreeNode):
             curr_key,_ = jax.random.split(curr_key)
             actions, log_p = dist.sample_and_log_prob(seed=curr_key)
             q_all = call_many_critics(observations,actions)
-            q = q_all.mean(axis=0)
+            q = jnp.sum(R2*q_all,axis=0)
             qs+=q
             logps+=log_p
             
@@ -181,7 +181,7 @@ class SACAgent(flax.struct.PyTreeNode):
         
         ### Compute advantage for the fixed states AND actions
         q_all = call_many_critics(batch["observations"],batch["actions"])
-        q = jnp.mean(q_all,axis=0)
+        q = jnp.sum(R2*q_all,axis=0)
         
         adv = q-v+ agent.temp() * h
         #adv = q-v

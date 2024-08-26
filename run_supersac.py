@@ -23,7 +23,7 @@ os.environ['TF_CUDNN_DETERMINISTIC'] = '1'
 parser = argparse.ArgumentParser()
 parser.add_argument('--algo_name', type=str, default='sac', help='the name of the RL algorithm')
 parser.add_argument('--seed',type=int,default=42) 
-parser.add_argument('--env_name',type=str,default="HalfCheetah-v5") 
+parser.add_argument('--env_name',type=str,default="Humanoid-v5") 
 parser.add_argument('--project_name',type=str,default="superppo_kindofworking") 
 parser.add_argument('--gamma',type=float,default=0.99)
 parser.add_argument('--max_steps',type=int,default=1_000_000) 
@@ -171,13 +171,14 @@ def train(args):
                     #transitions["rewards"] = env.normalize(transitions["rewards"])
                     idxs = jax.random.choice(agent.rng,a=transitions['observations'].shape[0], shape=(2500,256), replace=True)
                     batches = jax.vmap(lambda i: jax.tree_map(lambda x: x[i], transitions))(idxs)
-                    agent = agent.update_critics_seq(batches,R2)
+                    
+                    with jax.default_matmul_precision("float32"):
+                        agent = agent.update_critics_seq(batches,R2)
                            
                     ### Update actor ###
                     actor_batch = actor_buffer.get_all()    
                     
-                    with jax.default_matmul_precision('float32'):
-                        agent, actor_update_info = agent.update_actor(actor_batch,R2)    
+                    agent, actor_update_info = agent.update_actor(actor_batch,R2)    
                         
                     critic_update_info = {}
                     update_info = {**critic_update_info, **actor_update_info}

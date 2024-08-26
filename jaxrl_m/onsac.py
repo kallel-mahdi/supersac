@@ -158,7 +158,7 @@ class SACAgent(flax.struct.PyTreeNode):
         observations = batch["observations"]
         dist = agent.actor(observations)
         
-        j = 10
+        j = 5
         qs,logps = jnp.zeros((2500,)),jnp.zeros((2500,))
         
         call_one_critic = lambda observations,actions,params: agent.critic(observations,actions,params=params)
@@ -256,8 +256,13 @@ def create_learner(
             actor = TrainState.create(actor_def, actor_params, tx=optax.adam(learning_rate=actor_lr))
             
         else:
+            
+            tx = optax.chain(
+                optax.clip_by_global_norm(0.5),
+                optax.adam(learning_rate=actor_lr,b1=0.5),
+            )
             temp = TrainState.create(temp_def, temp_params, tx=optax.adam(learning_rate=temp_lr,b1=0.5))
-            actor = TrainState.create(actor_def, actor_params, tx=optax.adam(learning_rate=actor_lr,b1=0.5))
+            actor = TrainState.create(actor_def, actor_params, tx=tx)
             # temp = TrainState.create(temp_def, temp_params, tx=optax.rmsprop(learning_rate=temp_lr))
             # actor = TrainState.create(actor_def, actor_params, tx=optax.rmsprop(learning_rate=actor_lr))
             

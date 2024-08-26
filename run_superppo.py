@@ -196,9 +196,10 @@ class SACAgent(flax.struct.PyTreeNode):
 
             # Policy loss
             clip_coef = 0.05 ##default 0.2
-            actor_loss1 = -adv * ratio
-            actor_loss2 = -adv * jnp.clip(ratio, 1 - clip_coef, 1 + clip_coef)
-            actor_loss = jnp.maximum(discounts*actor_loss1, discounts*actor_loss2).sum()/(discounts.sum())
+            #actor_loss1 = -adv * ratio
+            actor_loss = -adv * ratio
+            # actor_loss2 = -adv * jnp.clip(ratio, 1 - clip_coef, 1 + clip_coef)
+            # actor_loss = jnp.maximum(discounts*actor_loss1, discounts*actor_loss2).sum()/(discounts.sum())
         
     
 
@@ -214,6 +215,7 @@ class SACAgent(flax.struct.PyTreeNode):
             return actor_loss, {
                 'actor_loss': actor_loss,
                 'entropy': entropy,
+                'approx_kl':approx_kl
             }
             
            

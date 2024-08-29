@@ -30,7 +30,6 @@ def estimate_return(acq_rollout,
     acq_obs = jnp.repeat(acq_rollout.observations,10,axis=0)
     acq_disc_masks = jnp.repeat(acq_rollout.disc_masks,10,axis=0)
     
-    
     acq_actor = acq_rollout.policy_params
     acq_return = acq_rollout.policy_return
     anc_actor = anc_agent.actor.params

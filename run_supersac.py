@@ -21,24 +21,33 @@ os.environ['TF_CUDNN_DETERMINISTIC'] = '1'
 
 ##############################
 parser = argparse.ArgumentParser()
-parser.add_argument('--algo_name', type=str, default='sac', help='the name of the RL algorithm')
+
 parser.add_argument('--seed',type=int,default=42) 
-parser.add_argument('--env_name',type=str,default="Walker2d-v5") 
-parser.add_argument('--project_name',type=str,default="superppo_kindofworking") 
+
+parser.add_argument('--algo_name', type=str, default='sac', help='the name of the RL algorithm')
+parser.add_argument('--project_name',type=str,default="superppo_preliminary") 
+
+parser.add_argument('--env_name',type=str,default="HalfCheetah-v5") 
+parser.add_argument('--healthy_reward',type=float,default=1.) 
 parser.add_argument('--gamma',type=float,default=0.99)
 parser.add_argument('--max_steps',type=int,default=1_000_000) 
 parser.add_argument('--num_rollouts',type=int,default=5) 
-parser.add_argument('--num_critics',type=int,default=5)     
+
+parser.add_argument('--num_critics',type=int,default=5)
 parser.add_argument('--on_policy_data',type=str2bool,default=False)
 parser.add_argument('--discount_actor',type=str2bool,default=True)
 parser.add_argument('--discount_entropy',type=str2bool,default=True) 
-parser.add_argument('--use_momentum',type=str2bool,default=False) 
+
 parser.add_argument('--adaptive_critics',type=str2bool,default=False) 
 parser.add_argument('--max_episode_steps',type=int,default=500) 
 parser.add_argument('--entropy_coeff',type=float,default=1.) 
+
+parser.add_argument('--critic_lr',type=float,default=3e-4) 
 parser.add_argument('--actor_lr',type=float,default=3e-4) 
 parser.add_argument('--temp_lr',type=float,default=3e-4)
-parser.add_argument('--healthy_reward',type=float,default=1.) 
+parser.add_argument('--momentum',type=float,default=0.) 
+parser.add_argument('--num_actor_updates',type=float,default=5) 
+
 
 args = parser.parse_args()
 
@@ -95,8 +104,6 @@ def train(args):
     else:
         print(f'env_name: {args.env_name}, max_episode_steps: {args.max_episode_steps}, healthy_reward: {args.healthy_reward}')
         env = gym.make(args.env_name, max_episode_steps=args.max_episode_steps, healthy_reward=args.healthy_reward)
-        #env = NormalizeReward(env)
-        #env = EpisodeMonitor(env)
     
     eval_env = EpisodeMonitor(gym.make(args.env_name,max_episode_steps=1000))
     
@@ -128,7 +135,9 @@ def train(args):
                     entropy_coeff=args.entropy_coeff,
                     temp_lr=args.temp_lr,
                     actor_lr=args.actor_lr,
-                    use_momentum=args.use_momentum,
+                    critic_lr=args.critic_lr,
+                    momentum=args.momentum,
+                    num_actor_updates=args.num_actor_updates,
                     hidden_dims=(256,256),
                     #**FLAGS.config
                     )
@@ -179,14 +188,14 @@ def train(args):
                     actor_batch = actor_buffer.get_all()    
                     #if args.adaptive_critics==True:
                     
-                    if len(policy_rollouts)>=10:
+                    # if len(policy_rollouts)>=10:
                         
-                        flattened_rollouts = flatten_rollouts(policy_rollouts)
-                        R2,bias = evaluate_many_critics(agent,policy_rollout.policy_return,flattened_rollouts,args.num_critics)
-                        R2_train_info = {'R2/max': jnp.max(R2),'R2/bias': bias[jnp.argmax(R2)],
-                                        "R2/histogram": wandb.Histogram(jnp.clip(R2,a_min=-1,a_max=1)),
-                                        }
-                        wandb.log(R2_train_info, step=int(i),commit=False)
+                    #     flattened_rollouts = flatten_rollouts(policy_rollouts)
+                    #     R2,bias = evaluate_many_critics(agent,policy_rollout.policy_return,flattened_rollouts,args.num_critics)
+                    #     R2_train_info = {'R2/max': jnp.max(R2),'R2/bias': bias[jnp.argmax(R2)],
+                    #                     "R2/histogram": wandb.Histogram(jnp.clip(R2,a_min=-1,a_max=1)),
+                    #                     }
+                    #     wandb.log(R2_train_info, step=int(i),commit=False)
                         
                             
                     agent, actor_update_info = agent.update_actor(actor_batch,R2)    

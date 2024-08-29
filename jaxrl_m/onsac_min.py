@@ -6,8 +6,9 @@ import jax.numpy as jnp
 import numpy as np
 import optax
 
+
 from jaxrl_m.common import TrainState, nonpytree_field
-from jaxrl_m.networks import OriginalCritic, Policy
+from jaxrl_m.networks import OriginalCritic, Policy,ensemblize
 from jaxrl_m.typing import *
 import jax.lax as lax
 
@@ -46,32 +47,33 @@ class SACAgent(flax.struct.PyTreeNode):
         new_rng, curr_key, next_key = jax.random.split(agent.rng, 3)
 
         def update_one_critic(critic):
-                            
+            
+
                 def critic_loss_fn(critic_params):
-                        
-                        next_actions,next_log_probs,_ = agent.sample_actions(batch["next_observations"],seed=next_key)
-                        
-                        next_q  = agent.critic(batch['next_observations'], next_actions,params=critic_params)
-                        
-                        target_q = batch['rewards'] + agent.config['discount'] * batch['masks'] * next_q
-                        ### Add entropy
-                        target_q = target_q - agent.config['discount'] * batch['masks'] * next_log_probs * agent.temp()
-                        target_q = jax.lax.stop_gradient(target_q)
-                        
-                        q = agent.critic(batch['observations'], batch['actions'],params=critic_params)
-                        critic_loss = ((target_q-q)**2).mean() 
-                        
-                        return critic_loss, {
+
+                    next_actions,next_log_probs,_ = agent.sample_actions(batch["next_observations"],seed=next_key)
+
+                    next_q1, next_q2 = agent.critic(batch['next_observations'], next_actions)
+                    next_q = jnp.minimum(next_q1, next_q2)
+                    target_q = batch['rewards'] + agent.config['discount'] * batch['masks'] * next_q
+
+                    #if agent.config['backup_entropy']:
+                    target_q = target_q - agent.config['discount'] * batch['masks'] * next_log_probs * agent.temp()
+                    
+                    q1, q2 = agent.critic(batch['observations'], batch['actions'], params=critic_params)
+                    critic_loss = ((q1 - target_q)**2 + (q2 - target_q)**2).mean()
+                    
+                    return critic_loss, {
                         'critic_loss': critic_loss,
-                        'q1': q.mean(),
+                        'q1': q1.mean(),
                     }  
                 
-                new_critic, critic_info = critic.apply_loss_fn(loss_fn=critic_loss_fn, has_aux=True)
+                new_critic, critic_info = agent.critic.apply_loss_fn(loss_fn=critic_loss_fn, has_aux=True)
                 
                 return new_critic,critic_info
 
 
-        new_critics,critic_info = jax.vmap(update_one_critic)(agent.critic)
+        new_critics,critic_info = update_one_critic(agent.critic)
         agent = agent.replace(rng=new_rng,critic=new_critics)
         
         return agent
@@ -79,6 +81,12 @@ class SACAgent(flax.struct.PyTreeNode):
     @jax.jit
     def update_critics_seq(agent,batches,R2):
        
+        #new_critic_params = agent.critic.params
+        
+        ### Reset optimizers 
+        #new_opt_state = jax.vmap(agent.critic.tx.init)(new_critic_params)
+        # new_critics = agent.critic.replace(params=new_critic_params,opt_state=new_opt_state)
+        # agent = agent.replace(critic=new_critics)
         ### Train critic sequentially
         agent,batches = jax.lax.fori_loop(0,2500,body,(agent,batches))
         
@@ -156,7 +164,7 @@ class SACAgent(flax.struct.PyTreeNode):
         qs,logps = jnp.zeros((2500,)),jnp.zeros((2500,))
         
         call_one_critic = lambda observations,actions,params: agent.critic(observations,actions,params=params)
-        call_many_critics = lambda observations,actions : jax.vmap(call_one_critic,in_axes=(None,None,0))(observations, actions,agent.critic.params)
+        #call_many_critics = lambda observations,actions : jax.vmap(call_one_critic,in_axes=(None,None,0))(observations, actions,agent.critic.params)
         
         ### Compute value for the fixed states
         
@@ -164,8 +172,8 @@ class SACAgent(flax.struct.PyTreeNode):
             
             curr_key,_ = jax.random.split(curr_key)
             actions, log_p,_ = agent.sample_actions(observations,seed=curr_key)
-            q_all = call_many_critics(observations,actions)
-            q = jnp.mean(q_all,axis=0)
+            q1,q2 = agent.critic(observations,actions)
+            q = jnp.minimum(q1, q2)
             qs+=q
             logps+=log_p
                     
@@ -173,14 +181,14 @@ class SACAgent(flax.struct.PyTreeNode):
         h = -(logps/j)
         
         ### Compute advantage for the fixed states AND actions
-        q_all = call_many_critics(batch["observations"],batch["actions"])
-        q = jnp.mean(q_all,axis=0)
+        q1,q2 = agent.critic(batch["observations"],batch["actions"])
+        q = jnp.minimum(q1, q2)
         
         
         #adv = q-v - agent.temp()*batch["log_probs"]### This one worked
         adv = q-v  - agent.temp()*(batch["log_probs"]-(logps/j))### This one worked
         
-        for i in range(agent.config["num_actor_updates"]):
+        for i in range(10):
             
             new_actor, actor_info = agent.actor.apply_loss_fn(actor_loss_fn,True,adv)
             new_temp, temp_info = agent.temp.apply_loss_fn(temp_loss_fn,True,actor_info['entropy'], agent.config['target_entropy'])
@@ -218,11 +226,11 @@ def create_learner(
                 discount_entropy,
                 adaptive_critics,
                 entropy_coeff,
-                momentum,
-                actor_lr,
-                critic_lr,
-                temp_lr,
-                num_actor_updates,
+                use_momentum,
+                
+                actor_lr: float = 3e-4,
+                critic_lr: float = 3e-4,
+                temp_lr: float =1e-3,## Test
                 hidden_dims: Sequence[int] = (256, 256),
                 target_entropy: float = None,
             **kwargs):
@@ -236,22 +244,31 @@ def create_learner(
         actor_def = Policy(hidden_dims, action_dim=action_dim,
             state_dependent_std=True, tanh_squash_distribution=False)
 
-        critic_def = OriginalCritic(hidden_dims)
-        critic_keys  = jax.random.split(critic_key, num_critics)
-        critic_params = jax.vmap(critic_def.init,in_axes=(0,None,None))(critic_keys, observations, actions)['params']
-        critics = jax.vmap(TrainState.create,in_axes=(None,0,None))(critic_def,critic_params,optax.adam(learning_rate=critic_lr))
+        #critic_def = OriginalCritic(hidden_dims)
+        critic_def = ensemblize(OriginalCritic, num_qs=2)(hidden_dims)
+        critic_params = critic_def.init(critic_key, observations, actions)['params']
+        #critics = jax.vmap(TrainState.create,in_axes=(None,0,None))(critic_def,critic_params,optax.adam(learning_rate=critic_lr))
+        critics = TrainState.create(critic_def, critic_params, tx=optax.adam(learning_rate=critic_lr))
 
         actor_params = actor_def.init(actor_key, observations)['params']
         temp_def = Temperature()
         temp_params = temp_def.init(rng)['params']
         
-        tx = optax.chain(
-            optax.clip_by_global_norm(0.5),
-            optax.adam(learning_rate=actor_lr,b1=momentum),
-        )
-        temp = TrainState.create(temp_def, temp_params, tx=optax.adam(learning_rate=temp_lr,b1=momentum))
-        actor = TrainState.create(actor_def, actor_params, tx=tx)
         
+        if use_momentum:
+            temp = TrainState.create(temp_def, temp_params, tx=optax.adam(learning_rate=temp_lr))
+            actor = TrainState.create(actor_def, actor_params, tx=optax.adam(learning_rate=actor_lr))
+            
+        else:
+            
+            tx = optax.chain(
+                optax.clip_by_global_norm(0.5),
+                optax.adam(learning_rate=actor_lr,b1=0.),
+            )
+            temp = TrainState.create(temp_def, temp_params, tx=optax.adam(learning_rate=temp_lr,b1=0.))
+            actor = TrainState.create(actor_def, actor_params, tx=tx)
+            # temp = TrainState.create(temp_def, temp_params, tx=optax.rmsprop(learning_rate=temp_lr))
+            # actor = TrainState.create(actor_def, actor_params, tx=optax.rmsprop(learning_rate=actor_lr))
             
         if target_entropy is None:
 
@@ -266,7 +283,6 @@ def create_learner(
             discount_actor = discount_actor, 
             discount_entropy = discount_entropy,
             adaptive_critics = adaptive_critics,
-            num_actor_updates = num_actor_updates
             
         ))
 

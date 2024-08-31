@@ -21,17 +21,18 @@ parser.add_argument('--project_name',type=str,default="superpppo_preliminary")
 parser.add_argument('--gamma',type=float,default=0.99)
 parser.add_argument('--max_steps',type=int,default=1_000_000) 
 parser.add_argument('--num_rollouts',type=int,default=5) 
-parser.add_argument('--num_critics',type=int,default=5) 
+
 
 parser.add_argument('--on_policy_data',type=str2bool,default=False) 
 parser.add_argument('--discount_entropy',type=str2bool,default=True) 
 parser.add_argument('--discount_actor',type=str2bool,default=True) 
 parser.add_argument('--momentum',type=float,default=0.) 
+parser.add_argument('--num_critics',type=int,default=5) 
 parser.add_argument('--adaptive_critics',type=str2bool,default=False) 
 
 parser.add_argument('--entropy_coeff',type=float,default=1.) 
-parser.add_argument('--max_episode_steps',type=int,default=1000) 
-parser.add_argument('--healthy_reward',type=float,default=0.5) 
+parser.add_argument('--max_episode_steps',type=int,default=500) 
+parser.add_argument('--healthy_reward',type=float,default=1.) 
 args = parser.parse_args()
 ##############################
 
@@ -40,7 +41,7 @@ seeds = list(np.random.randint(0,1e6,5))
 configs = itertools.product(seeds,[args.env_name],[args.project_name],
                             [args.gamma],[args.max_steps],[args.num_rollouts],
                             [args.num_critics],[args.adaptive_critics],[args.discount_entropy],[args.discount_actor],[args.entropy_coeff],
-                            [args.max_episode_steps],[args.healthy_reward],[args.use_momentum],[args.on_policy_data])
+                            [args.max_episode_steps],[args.healthy_reward],[args.momentum],[args.on_policy_data])
             
 for cfg in configs :
     
@@ -55,7 +56,7 @@ for cfg in configs :
     --gamma {cfg[3]} --max_steps {cfg[4]} --num_rollouts {cfg[5]} \
     --num_critics {cfg[6]} --adaptive_critics {cfg[7]} --discount_entropy {cfg[8]} \
     --discount_actor {cfg[9]} --entropy_coeff {cfg[10]} --max_episode_steps {cfg[11]} \
-    --healthy_reward {cfg[12]} --use_momentum {cfg[13]} --on_policy_data {cfg[14]}\
+    --healthy_reward {cfg[12]} --momentum {cfg[13]} --on_policy_data {cfg[14]}\
     >./null 2>&1 & '
     
     print(command)

@@ -192,6 +192,8 @@ def rollout_policy2(agent,env,exploration_rng,
                    warmup=False,num_rollouts=5,discount=0.99,max_length=500):
     
     
+    
+    #print(f'discount {discount}')
     actor_buffer = actor_buffer.reset()
     obs,_ = env.reset()  
     n_steps,n_rollouts,episode_step,disc,mask = 0,0,0,1.,1.

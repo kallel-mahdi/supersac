@@ -20,7 +20,7 @@ def body(i,val):
 
 class Temperature(nn.Module):
     initial_temperature: float = -4.605 ## (log(0.01))
-    #initial_temperature: float = 0.01
+    #initial_temperature: float = 5e-3
     
     
     @nn.compact
@@ -79,6 +79,12 @@ class SACAgent(flax.struct.PyTreeNode):
     @jax.jit
     def update_critics_seq(agent,batches,R2):
        
+    
+        # ### Reset optimizers 
+        # new_critic_params = agent.critic.params
+        # new_opt_state = jax.vmap(agent.critic.tx.init)(new_critic_params)
+        # new_critics = agent.critic.replace(params=new_critic_params,opt_state=new_opt_state)
+        # agent = agent.replace(critic=new_critics)
         ### Train critic sequentially
         agent,batches = jax.lax.fori_loop(0,2500,body,(agent,batches))
         
@@ -118,7 +124,7 @@ class SACAgent(flax.struct.PyTreeNode):
             approx_kl = ((ratio - 1) - logratio).mean()
 
             # Policy loss
-            clip_coef = 0.1 ##default 0.2 
+            clip_coef = agent.config["clipping_ratio"] ##default 0.2 
             actor_loss1 = masks*adv * ratio
             actor_loss2 = masks*adv * jnp.clip(ratio, 1 - clip_coef, 1 + clip_coef)
 
@@ -146,8 +152,8 @@ class SACAgent(flax.struct.PyTreeNode):
         
         new_rng, curr_key, next_key = jax.random.split(agent.rng, 3)
 
-        # R2 = R2.reshape(-1,1)
-        # R2 = jax.nn.softmax(R2,axis=0)
+        R2 = R2.reshape(-1,1)
+        R2 = jax.nn.softmax(R2,axis=0)
 
         observations = batch["observations"]
         
@@ -165,7 +171,7 @@ class SACAgent(flax.struct.PyTreeNode):
             curr_key,_ = jax.random.split(curr_key)
             actions, log_p,_ = agent.sample_actions(observations,seed=curr_key)
             q_all = call_many_critics(observations,actions)
-            q = jnp.mean(q_all,axis=0)
+            q = jnp.sum(R2*q_all,axis=0)
             qs+=q
             logps+=log_p
                     
@@ -174,7 +180,7 @@ class SACAgent(flax.struct.PyTreeNode):
         
         ### Compute advantage for the fixed states AND actions
         q_all = call_many_critics(batch["observations"],batch["actions"])
-        q = jnp.mean(q_all,axis=0)
+        q = jnp.sum(R2*q_all,axis=0)
         
         
         #adv = q-v - agent.temp()*batch["log_probs"]### This one worked
@@ -223,6 +229,7 @@ def create_learner(
                 critic_lr,
                 temp_lr,
                 num_actor_updates,
+                clipping_ratio,
                 hidden_dims: Sequence[int] = (256, 256),
                 target_entropy: float = None,
             **kwargs):
@@ -266,7 +273,8 @@ def create_learner(
             discount_actor = discount_actor, 
             discount_entropy = discount_entropy,
             adaptive_critics = adaptive_critics,
-            num_actor_updates = num_actor_updates
+            num_actor_updates = num_actor_updates,
+            clipping_ratio = clipping_ratio
             
         ))
 

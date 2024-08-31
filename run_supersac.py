@@ -25,37 +25,32 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--seed',type=int,default=42) 
 
 parser.add_argument('--algo_name', type=str, default='sac', help='the name of the RL algorithm')
-parser.add_argument('--project_name',type=str,default="superppo_preliminary") 
+parser.add_argument('--project_name',type=str,default="superppo_delete") 
 
-parser.add_argument('--env_name',type=str,default="HalfCheetah-v5") 
-parser.add_argument('--healthy_reward',type=float,default=1.) 
-parser.add_argument('--gamma',type=float,default=0.99)
+parser.add_argument('--env_name',type=str,default="Walker2d-v5") 
 parser.add_argument('--max_steps',type=int,default=1_000_000) 
+parser.add_argument('--max_episode_steps',type=int,default=500) 
 parser.add_argument('--num_rollouts',type=int,default=5) 
+parser.add_argument('--gamma',type=float,default=0.99)
+parser.add_argument('--healthy_reward',type=float,default=1.) 
+parser.add_argument('--entropy_coeff',type=float,default=1.) 
 
-parser.add_argument('--num_critics',type=int,default=5)
 parser.add_argument('--on_policy_data',type=str2bool,default=False)
 parser.add_argument('--discount_actor',type=str2bool,default=True)
 parser.add_argument('--discount_entropy',type=str2bool,default=True) 
-
+parser.add_argument('--num_critics',type=int,default=5)
 parser.add_argument('--adaptive_critics',type=str2bool,default=False) 
-parser.add_argument('--max_episode_steps',type=int,default=500) 
-parser.add_argument('--entropy_coeff',type=float,default=1.) 
 
 parser.add_argument('--critic_lr',type=float,default=3e-4) 
 parser.add_argument('--actor_lr',type=float,default=3e-4) 
 parser.add_argument('--temp_lr',type=float,default=3e-4)
 parser.add_argument('--momentum',type=float,default=0.) 
-parser.add_argument('--num_actor_updates',type=float,default=5) 
+parser.add_argument('--num_actor_updates',type=int,default=10) 
+parser.add_argument('--clipping_ratio',type=int,default=0.2) 
+
 
 
 args = parser.parse_args()
-
-# cfg = itertools.product([args.seed],[args.env_name],[args.project_name],[args.algo_name],
-#                         [args.learning_rate],[args.lengthscale_bound],
-#                         [args.reset_critic],[args.aggregation])
-
-# print(cfg)
 
 
 
@@ -137,6 +132,7 @@ def train(args):
                     actor_lr=args.actor_lr,
                     critic_lr=args.critic_lr,
                     momentum=args.momentum,
+                    clipping_ratio=args.clipping_ratio,
                     num_actor_updates=args.num_actor_updates,
                     hidden_dims=(256,256),
                     #**FLAGS.config
@@ -188,14 +184,14 @@ def train(args):
                     actor_batch = actor_buffer.get_all()    
                     #if args.adaptive_critics==True:
                     
-                    # if len(policy_rollouts)>=10:
+                    if len(policy_rollouts)>=10 and args.adaptive_critics:
                         
-                    #     flattened_rollouts = flatten_rollouts(policy_rollouts)
-                    #     R2,bias = evaluate_many_critics(agent,policy_rollout.policy_return,flattened_rollouts,args.num_critics)
-                    #     R2_train_info = {'R2/max': jnp.max(R2),'R2/bias': bias[jnp.argmax(R2)],
-                    #                     "R2/histogram": wandb.Histogram(jnp.clip(R2,a_min=-1,a_max=1)),
-                    #                     }
-                    #     wandb.log(R2_train_info, step=int(i),commit=False)
+                        flattened_rollouts = flatten_rollouts(policy_rollouts)
+                        R2,bias = evaluate_many_critics(agent,policy_rollout.policy_return,flattened_rollouts,args.num_critics)
+                        R2_train_info = {'R2/max': jnp.max(R2),'R2/bias': bias[jnp.argmax(R2)],
+                                        "R2/histogram": wandb.Histogram(jnp.clip(R2,a_min=-1,a_max=1)),
+                                        }
+                        wandb.log(R2_train_info, step=int(i),commit=False)
                         
                             
                     agent, actor_update_info = agent.update_actor(actor_batch,R2)    

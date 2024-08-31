@@ -43,7 +43,7 @@ parser.add_argument('--num_critics',type=int,default=5)
 
 parser.add_argument('--critic_lr',type=float,default=3e-4) 
 parser.add_argument('--actor_lr',type=float,default=3e-4) 
-parser.add_argument('--temp_lr',type=float,default=3e-4)
+parser.add_argument('--temp_lr',type=float,default=1e-4)
 parser.add_argument('--momentum',type=float,default=0.) 
 parser.add_argument('--num_actor_updates',type=int,default=5) 
 parser.add_argument('--clipping_ratio',type=int,default=0.1) 

@@ -22,7 +22,7 @@ os.environ['TF_CUDNN_DETERMINISTIC'] = '1'
 ##############################
 parser = argparse.ArgumentParser()
 
-parser.add_argument('--seed',type=int,default=27) 
+parser.add_argument('--seed',type=int,default=1000) 
 
 parser.add_argument('--algo_name', type=str, default='sac', help='the name of the RL algorithm')
 parser.add_argument('--project_name',type=str,default="bras_lhnina") 
@@ -44,9 +44,9 @@ parser.add_argument('--num_critics',type=int,default=5)
 parser.add_argument('--critic_lr',type=float,default=3e-4) 
 parser.add_argument('--actor_lr',type=float,default=3e-4) 
 parser.add_argument('--temp_lr',type=float,default=3e-4)
-parser.add_argument('--momentum',type=float,default=0.5) 
+parser.add_argument('--momentum',type=float,default=0.) 
 parser.add_argument('--num_actor_updates',type=int,default=5) 
-parser.add_argument('--clipping_ratio',type=int,default=0.2) 
+parser.add_argument('--clipping_ratio',type=int,default=0.1) 
 
 
 

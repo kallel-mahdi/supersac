@@ -25,14 +25,14 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--seed',type=int,default=1000) 
 
 parser.add_argument('--algo_name', type=str, default='sac', help='the name of the RL algorithm')
-parser.add_argument('--project_name',type=str,default="bras_lhnina") 
+parser.add_argument('--project_name',type=str,default="bras_lhnina_995") 
 
 parser.add_argument('--env_name',type=str,default="Walker2d-v5") 
-parser.add_argument('--max_steps',type=int,default=1_000_000) 
-parser.add_argument('--max_episode_steps',type=int,default=500) 
-parser.add_argument('--num_rollouts',type=int,default=5) 
-parser.add_argument('--gamma',type=float,default=0.99)
-parser.add_argument('--healthy_reward',type=float,default=1.) 
+parser.add_argument('--max_steps',type=int,default=2_000_000) 
+parser.add_argument('--max_episode_steps',type=int,default=1000) 
+parser.add_argument('--num_rollouts',type=int,default=4) 
+parser.add_argument('--gamma',type=float,default=0.995)
+parser.add_argument('--healthy_reward',type=float,default=0.5) 
 parser.add_argument('--entropy_coeff',type=float,default=1.) 
 
 parser.add_argument('--discount_actor',type=str2bool,default=True)
@@ -43,10 +43,10 @@ parser.add_argument('--num_critics',type=int,default=5)
 
 parser.add_argument('--critic_lr',type=float,default=3e-4) 
 parser.add_argument('--actor_lr',type=float,default=3e-4) 
-parser.add_argument('--temp_lr',type=float,default=1e-4)
+parser.add_argument('--temp_lr',type=float,default=3e-4)
 parser.add_argument('--momentum',type=float,default=0.) 
-parser.add_argument('--num_actor_updates',type=int,default=5) 
-parser.add_argument('--clipping_ratio',type=int,default=0.1) 
+parser.add_argument('--num_actor_updates',type=int,default=10) 
+parser.add_argument('--clipping_ratio',type=int,default=0.2) 
 
 
 
@@ -174,7 +174,7 @@ def train(args):
                     logging.debug('update critics')
                     transitions = replay_buffer.get_all()
                     #transitions["rewards"] = env.normalize(transitions["rewards"])
-                    idxs = jax.random.choice(agent.rng,a=transitions['observations'].shape[0], shape=(2500,256), replace=True)
+                    idxs = jax.random.choice(agent.rng,a=transitions['observations'].shape[0], shape=(4000,256), replace=True)
                     batches = jax.vmap(lambda i: jax.tree_map(lambda x: x[i], transitions))(idxs)
                     
                     with jax.default_matmul_precision("float32"):
@@ -219,7 +219,8 @@ def train(args):
                                                                         discount = args.gamma,max_length=1000)
                         eval_metrics = {"policy_return": policy_return,"std": jnp.sqrt(variance),"undisc_policy_return": undisc_policy_return}
 
-                        # policy_fn = partial(supply_rng(agent.sample_actions), temperature=1.)
+                        
+                        # policy_fn = partial(supply_rng(agent.sample_actions), temperature=0.)
                         # eval_metrics = evaluate(policy_fn, eval_env, num_episodes=10)
                         eval_metrics = {f'evaluation/{k}': v for k, v in eval_metrics.items()}
                         eval_metrics['n_grads']=int(n_grads)

@@ -19,8 +19,8 @@ def body(i,val):
     return (agent.update_critics(get_batch(i,batches)),batches)
 
 class Temperature(nn.Module):
-    initial_temperature: float = -4.605 ## (log(0.01))
-    #initial_temperature: float = 5e-3
+    #initial_temperature: float = -4.605 ## (log(0.01))
+    initial_temperature: float = 0.01
     
     
     @nn.compact
@@ -28,8 +28,8 @@ class Temperature(nn.Module):
         log_temp = self.param('log_temp',
                               init_fn=lambda key: jnp.full(
                                   (), self.initial_temperature))
-        return jnp.exp(log_temp)
-        #return jnp.abs(log_temp)
+        #return jnp.exp(log_temp)
+        return jnp.abs(log_temp)
 
 
 class SACAgent(flax.struct.PyTreeNode):
@@ -191,7 +191,7 @@ class SACAgent(flax.struct.PyTreeNode):
             new_actor, actor_info = agent.actor.apply_loss_fn(actor_loss_fn,True,adv)
             new_temp, temp_info = agent.temp.apply_loss_fn(temp_loss_fn,True,actor_info['entropy'], agent.config['target_entropy'])
             agent = agent.replace(rng=new_rng, actor=new_actor,temp=new_temp)
-            #new_temp.params["log_temp"]=jnp.clip(new_temp.params["log_temp"],5e-3,1)
+            new_temp.params["log_temp"]=jnp.clip(new_temp.params["log_temp"],0.01,1)
             #agent = agent.replace(temp=new_temp)
             
         

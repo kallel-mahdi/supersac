@@ -1,4 +1,5 @@
 
+import jax.random
 import flax
 import flax.linen as nn
 import jax
@@ -20,7 +21,7 @@ def body(i,val):
 
 class Temperature(nn.Module):
     #initial_temperature: float = -4.605 ## (log(0.01))
-    initial_temperature: float = 0.001
+    initial_temperature: float = 0.01
     
     
     @nn.compact
@@ -86,7 +87,7 @@ class SACAgent(flax.struct.PyTreeNode):
         new_critics = agent.critic.replace(params=new_critic_params,opt_state=new_opt_state)
         agent = agent.replace(critic=new_critics)
         ### Train critic sequentially
-        agent,batches = jax.lax.fori_loop(0,4000,body,(agent,batches))
+        agent,batches = jax.lax.fori_loop(0,2500,body,(agent,batches))
         
         return agent
 
@@ -159,7 +160,7 @@ class SACAgent(flax.struct.PyTreeNode):
         
         
         j = 10
-        qs,logps = jnp.zeros((4000,)),jnp.zeros((4000,))
+        qs,logps = jnp.zeros((2500,)),jnp.zeros((2500,))
         
         call_one_critic = lambda observations,actions,params: agent.critic(observations,actions,params=params)
         call_many_critics = lambda observations,actions : jax.vmap(call_one_critic,in_axes=(None,None,0))(observations, actions,agent.critic.params)
@@ -192,7 +193,7 @@ class SACAgent(flax.struct.PyTreeNode):
             agent = agent.replace(rng=new_rng, actor=new_actor)
         
         new_temp, temp_info = agent.temp.apply_loss_fn(temp_loss_fn,True,actor_info['entropy'], agent.config['target_entropy'])
-        new_temp.params["log_temp"]=jnp.clip(new_temp.params["log_temp"],0.001,1)
+        new_temp.params["log_temp"]=jnp.clip(new_temp.params["log_temp"],0.01,1)
         agent = agent.replace(temp=new_temp)
             
         
@@ -213,6 +214,21 @@ class SACAgent(flax.struct.PyTreeNode):
         log_ps = pre_log_ps - jnp.sum(2 * (jnp.log(2) - pre_actions - jax.nn.softplus(-2 * pre_actions)), axis=-1)        
         
         return actions,log_ps,pre_actions
+    
+    
+    @jax.jit
+    def deterministic_action(agent,   
+                       observations: np.ndarray,
+                       ) -> jnp.ndarray:
+        
+        ### random always true
+        seed = jax.random.PRNGKey(0)
+        dist = agent.actor(observations, temperature=0.)
+        pre_actions,pre_log_ps = dist.sample_and_log_prob(seed=seed)
+        actions = jax.nn.tanh(pre_actions)
+        log_ps = pre_log_ps - jnp.sum(2 * (jnp.log(2) - pre_actions - jax.nn.softplus(-2 * pre_actions)), axis=-1)        
+        
+        return actions
 
 
 def create_learner(
@@ -231,7 +247,7 @@ def create_learner(
                 temp_lr,
                 num_actor_updates,
                 clipping_ratio,
-                hidden_dims: Sequence[int] = (256, 256),
+                hidden_dims: Sequence[int] = (64, 64),
                 target_entropy: float = None,
             **kwargs):
 
@@ -254,8 +270,9 @@ def create_learner(
         temp_params = temp_def.init(rng)['params']
         
         tx = optax.chain(
-            optax.clip_by_global_norm(1.),
-            optax.adam(learning_rate=actor_lr,b1=momentum,b2=0.9),
+            optax.clip_by_global_norm(0.5),
+            #optax.adam(learning_rate=actor_lr,b1=momentum,b2=0.9),
+            optax.adam(learning_rate=actor_lr,b1=momentum),
         )
         temp = TrainState.create(temp_def, temp_params, tx=optax.sgd(learning_rate=temp_lr))
         actor = TrainState.create(actor_def, actor_params, tx=tx)

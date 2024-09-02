@@ -17,11 +17,10 @@ def str2bool(v):
 parser = argparse.ArgumentParser()
 parser.add_argument('--seed',type=int,default=42) 
 parser.add_argument('--env_name',type=str,default="Hopper-v4") 
-parser.add_argument('--project_name',type=str,default="ppo_birthday_995") 
-parser.add_argument('--gamma',type=float,default=0.995)
-parser.add_argument('--max_steps',type=int,default=2_000_000) 
+parser.add_argument('--project_name',type=str,default="iclr_99") 
+parser.add_argument('--gamma',type=float,default=0.99)
+parser.add_argument('--max_steps',type=int,default=1_000_000) 
 parser.add_argument('--num_rollouts',type=int,default=5) 
-
 
 parser.add_argument('--on_policy_data',type=str2bool,default=False) 
 parser.add_argument('--discount_entropy',type=str2bool,default=True) 
@@ -31,9 +30,10 @@ parser.add_argument('--num_critics',type=int,default=5)
 parser.add_argument('--adaptive_critics',type=str2bool,default=False) 
 
 parser.add_argument('--entropy_coeff',type=float,default=1.) 
-parser.add_argument('--max_episode_steps',type=int,default=1000) 
-parser.add_argument('--healthy_reward',type=float,default=0.5) 
+parser.add_argument('--max_episode_steps',type=int,default=500) 
+parser.add_argument('--healthy_reward',type=float,default=1.) 
 args = parser.parse_args()
+
 ##############################
 
 np.random.seed(42)

@@ -25,14 +25,14 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--seed',type=int,default=1000) 
 
 parser.add_argument('--algo_name', type=str, default='sac', help='the name of the RL algorithm')
-parser.add_argument('--project_name',type=str,default="bras_lhnina_995") 
+parser.add_argument('--project_name',type=str,default="delete_99") 
 
 parser.add_argument('--env_name',type=str,default="Walker2d-v5") 
-parser.add_argument('--max_steps',type=int,default=2_000_000) 
-parser.add_argument('--max_episode_steps',type=int,default=1000) 
-parser.add_argument('--num_rollouts',type=int,default=4) 
-parser.add_argument('--gamma',type=float,default=0.995)
-parser.add_argument('--healthy_reward',type=float,default=0.5) 
+parser.add_argument('--max_steps',type=int,default=1_000_000) 
+parser.add_argument('--max_episode_steps',type=int,default=500) 
+parser.add_argument('--num_rollouts',type=int,default=5) 
+parser.add_argument('--gamma',type=float,default=0.99)
+parser.add_argument('--healthy_reward',type=float,default=1.) 
 parser.add_argument('--entropy_coeff',type=float,default=1.) 
 
 parser.add_argument('--discount_actor',type=str2bool,default=True)
@@ -46,13 +46,11 @@ parser.add_argument('--actor_lr',type=float,default=3e-4)
 parser.add_argument('--temp_lr',type=float,default=3e-4)
 parser.add_argument('--momentum',type=float,default=0.) 
 parser.add_argument('--num_actor_updates',type=int,default=10) 
-parser.add_argument('--clipping_ratio',type=int,default=0.2) 
-
+parser.add_argument('--clipping_ratio',type=float,default=0.2) 
+parser.add_argument('--hidden_dims',type=int,default=256) 
 
 
 args = parser.parse_args()
-
-
 
 
 def train(args):
@@ -72,8 +70,7 @@ def train(args):
     from jaxrl_m.evaluate_critic import evaluate_many_critics
     from jaxrl_m.evaluation import (EpisodeMonitor, evaluate, flatten,
                                     supply_rng)
-    from jaxrl_m.rollout import (rollout_policy, rollout_policy2,
-                                 rollout_policy_parallel)
+    from jaxrl_m.rollout import (rollout_policy, rollout_policy2)
     from jaxrl_m.utils import flatten_rollouts
     from jaxrl_m.wandb import default_wandb_config, get_flag_dict, setup_wandb
     config.update("jax_debug_nans", True)
@@ -134,7 +131,7 @@ def train(args):
                     momentum=args.momentum,
                     clipping_ratio=args.clipping_ratio,
                     num_actor_updates=args.num_actor_updates,
-                    hidden_dims=(256,256),
+                    hidden_dims=(args.hidden_dims,args.hidden_dims),
                     #**FLAGS.config
                     )
 
@@ -144,96 +141,94 @@ def train(args):
     i = 0
     unlogged_steps,cached_steps = 0,0
     policy_rollouts = deque([], maxlen=20)
-    warmup = True
+    
     R2,bias = jnp.ones(args.num_critics),jnp.zeros(args.num_critics)
 
     
     with tqdm.tqdm(total=max_steps) as pbar:
         
         while (i < max_steps):
-            with jax.log_compiles(False):
-                warmup=(i < start_steps)
                 
                 logging.debug('policy rollout')
                 if args.on_policy_data: replay_buffer = replay_buffer.reset()
                 replay_buffer,actor_buffer,policy_rollout,policy_return,variance,undisc_policy_return,num_steps = rollout_policy2(
                                                                         agent,env,exploration_rng,
-                                                                        replay_buffer,actor_buffer,warmup=warmup,
+                                                                        replay_buffer,actor_buffer,eval=False,
                                                                         num_rollouts=args.num_rollouts,discount = args.gamma,max_length=args.max_episode_steps)
                                                               
-                if not warmup : policy_rollouts.append(policy_rollout)
+                policy_rollouts.append(policy_rollout)
+                
                 unlogged_steps += num_steps
                 cached_steps += num_steps
                 
                 i+=num_steps
                 pbar.update(int(num_steps))
                 
-                if i >= start_steps:
-                
-                    ### Update critics ###:
-                    logging.debug('update critics')
-                    transitions = replay_buffer.get_all()
-                    #transitions["rewards"] = env.normalize(transitions["rewards"])
-                    idxs = jax.random.choice(agent.rng,a=transitions['observations'].shape[0], shape=(4000,256), replace=True)
-                    batches = jax.vmap(lambda i: jax.tree_map(lambda x: x[i], transitions))(idxs)
-                    
-                    with jax.default_matmul_precision("float32"):
-                        agent = agent.update_critics_seq(batches,R2)
-                           
-                    ### Update actor ###
-                    actor_batch = actor_buffer.get_all()    
-                    #if args.adaptive_critics==True:
-                    
-                    if len(policy_rollouts)>=10 and args.adaptive_critics:
-                        
-                        flattened_rollouts = flatten_rollouts(policy_rollouts)
-                        R2,bias = evaluate_many_critics(agent,policy_rollout.policy_return,flattened_rollouts,args.num_critics)
-                        R2_train_info = {'R2/max': jnp.max(R2),'R2/bias': bias[jnp.argmax(R2)],
-                                        "R2/histogram": wandb.Histogram(jnp.clip(R2,a_min=-1,a_max=1)),
-                                        }
-                        wandb.log(R2_train_info, step=int(i),commit=False)
-                        
-                            
-                    agent, actor_update_info = agent.update_actor(actor_batch,R2)    
-                        
-                    critic_update_info = {}
-                    update_info = {**critic_update_info, **actor_update_info}
-                    n_grads += 1
-                    
-                    ### Log training info ###
-                    exploration_metrics = {f'exploration/disc_return': policy_return,'training/std': jnp.sqrt(variance)}
-                    train_metrics = {f'training/{k}': v for k, v in update_info.items()}
-                    train_metrics['training/undisc_return'] = undisc_policy_return
-                    
-                    wandb.log(train_metrics, step=int(i),commit=False)
-                    wandb.log(exploration_metrics, step=int(i),commit=False)
-                
-                    ### Log evaluation info ###
-                    
-                    if unlogged_steps >= log_interval:
-                        
-                        _,_,policy_rollout,policy_return,variance,undisc_policy_return,num_steps = rollout_policy(
-                                                                        agent,eval_env,exploration_rng,
-                                                                        None,None,warmup=False,
-                                                                        num_rollouts=10,
-                                                                        discount = args.gamma,max_length=1000)
-                        eval_metrics = {"policy_return": policy_return,"std": jnp.sqrt(variance),"undisc_policy_return": undisc_policy_return}
-
-                        
-                        # policy_fn = partial(supply_rng(agent.sample_actions), temperature=0.)
-                        # eval_metrics = evaluate(policy_fn, eval_env, num_episodes=10)
-                        eval_metrics = {f'evaluation/{k}': v for k, v in eval_metrics.items()}
-                        eval_metrics['n_grads']=int(n_grads)
-
-                        eval_step = i
-                        wandb.log(eval_metrics, step=int(eval_step),commit=True)
-                        unlogged_steps = 0
-                
-                    if cached_steps >= int(1e6): 
-                        jax.clear_caches()
-                        cached_steps = 0
-                        print('clearing cache')
             
+                ### Update critics ###:
+                logging.debug('update critics')
+                transitions = replay_buffer.get_all()
+                #transitions["rewards"] = env.normalize(transitions["rewards"])
+                idxs = jax.random.choice(agent.rng,a=transitions['observations'].shape[0], shape=(2500,256), replace=True)
+                batches = jax.vmap(lambda i: jax.tree_map(lambda x: x[i], transitions))(idxs)
+                
+                with jax.default_matmul_precision("float32"):
+                    agent = agent.update_critics_seq(batches,R2)
+                        
+                ### Update actor ###
+                actor_batch = actor_buffer.get_all()    
+                
+                if len(policy_rollouts)>=10 and args.adaptive_critics:
+                    
+                    flattened_rollouts = flatten_rollouts(policy_rollouts)
+                    R2,bias = evaluate_many_critics(agent,policy_rollout.policy_return,flattened_rollouts,args.num_critics)
+                    R2_train_info = {'R2/max': jnp.max(R2),'R2/bias': bias[jnp.argmax(R2)],
+                                    "R2/histogram": wandb.Histogram(jnp.clip(R2,a_min=-1,a_max=1)),
+                                    }
+                    wandb.log(R2_train_info, step=int(i),commit=False)
+                    
+                        
+                agent, actor_update_info = agent.update_actor(actor_batch,R2)    
+                    
+                critic_update_info = {}
+                update_info = {**critic_update_info, **actor_update_info}
+                n_grads += 1
+                
+                ### Log training info ###
+                exploration_metrics = {f'exploration/disc_return': policy_return,'training/std': jnp.sqrt(variance)}
+                train_metrics = {f'training/{k}': v for k, v in update_info.items()}
+                train_metrics['training/undisc_return'] = undisc_policy_return
+                
+                wandb.log(train_metrics, step=int(i),commit=False)
+                wandb.log(exploration_metrics, step=int(i),commit=False)
+            
+                ### Log evaluation info ###
+                
+                if unlogged_steps >= log_interval:
+                    
+                    _,_,policy_rollout,policy_return,variance,undisc_policy_return,num_steps = rollout_policy(
+                                                                    agent,eval_env,exploration_rng,
+                                                                    None,None,eval=True,
+                                                                    num_rollouts=10,
+                                                                    discount = args.gamma,max_length=1000)
+                    eval_metrics = {"policy_return": policy_return,"std": jnp.sqrt(variance),"undisc_policy_return": undisc_policy_return}
+
+                    
+                    # policy_fn = partial(supply_rng(agent.sample_action), temperature=0.)
+                    # eval_metrics = evaluate(policy_fn, eval_env, num_episodes=10)
+                    
+                    eval_metrics = {f'evaluation/{k}': v for k, v in eval_metrics.items()}
+                    eval_metrics['n_grads']=int(n_grads)
+
+                    eval_step = i
+                    wandb.log(eval_metrics, step=int(eval_step),commit=True)
+                    unlogged_steps = 0
+            
+                if cached_steps >= int(1e6): 
+                    jax.clear_caches()
+                    cached_steps = 0
+                    print('clearing cache')
+        
     wandb_run.finish()
 
 train(args)

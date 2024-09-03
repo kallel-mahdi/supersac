@@ -29,8 +29,8 @@ class Temperature(nn.Module):
         log_temp = self.param('log_temp',
                               init_fn=lambda key: jnp.full(
                                   (), self.initial_temperature))
-        #return jnp.exp(log_temp)
-        return jnp.abs(log_temp)
+        return jnp.exp(log_temp)
+        #return jnp.abs(log_temp)
 
 
 class SACAgent(flax.struct.PyTreeNode):
@@ -182,20 +182,18 @@ class SACAgent(flax.struct.PyTreeNode):
         ### Compute advantage for the fixed states AND actions
         q_all = call_many_critics(batch["observations"],batch["actions"])
         q = jnp.mean(q_all,axis=0)
-        
-        
-        #adv = q-v - agent.temp()*batch["log_probs"]### This one worked
         adv = q-v  - agent.temp()*(batch["log_probs"]-(logps/j))### This one worked
         
         for i in range(agent.config["num_actor_updates"]):
             
             new_actor, actor_info = agent.actor.apply_loss_fn(actor_loss_fn,True,adv)
-            agent = agent.replace(rng=new_rng, actor=new_actor)
-        
-        new_temp, temp_info = agent.temp.apply_loss_fn(temp_loss_fn,True,actor_info['entropy'], agent.config['target_entropy'])
-        new_temp.params["log_temp"]=jnp.clip(new_temp.params["log_temp"],0.01,1)
-        agent = agent.replace(temp=new_temp)
+            new_temp, temp_info = agent.temp.apply_loss_fn(temp_loss_fn,True,actor_info['entropy'], agent.config['target_entropy'])
             
+            agent = agent.replace(rng=new_rng, actor=new_actor,temp=new_temp)
+        
+        # new_temp, temp_info = agent.temp.apply_loss_fn(temp_loss_fn,True,actor_info['entropy'], agent.config['target_entropy'])
+        # new_temp.params["log_temp"]=jnp.clip(new_temp.params["log_temp"],0.01,1)
+        # agent = agent.replace(temp=new_temp)
         
         return agent, {**actor_info,**temp_info}
         
@@ -247,7 +245,7 @@ def create_learner(
                 temp_lr,
                 num_actor_updates,
                 clipping_ratio,
-                hidden_dims: Sequence[int] = (64, 64),
+                hidden_dims: Sequence[int],
                 target_entropy: float = None,
             **kwargs):
 

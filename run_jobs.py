@@ -17,7 +17,7 @@ def str2bool(v):
 parser = argparse.ArgumentParser()
 parser.add_argument('--seed',type=int,default=42) 
 parser.add_argument('--env_name',type=str,default="Hopper-v4") 
-parser.add_argument('--project_name',type=str,default="iclr_99_v2") 
+parser.add_argument('--project_name',type=str,default="iclr_99_v3") 
 parser.add_argument('--gamma',type=float,default=0.99)
 parser.add_argument('--max_steps',type=int,default=1_000_000) 
 parser.add_argument('--num_rollouts',type=int,default=5) 

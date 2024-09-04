@@ -98,8 +98,8 @@ class SACAgent(flax.struct.PyTreeNode):
         def temp_loss_fn(temp_params, entropy, target_entropy):
             temperature = agent.temp(params=temp_params)
             entropy_diff = entropy-target_entropy
-            temp_loss = temperature*(jnp.sign(entropy_diff)*(entropy_diff)**2).mean()
-            #temp_loss = (temperature * entropy_diff).mean()
+            #temp_loss = temperature*(jnp.sign(entropy_diff)*(entropy_diff)**2).mean()
+            temp_loss = (temperature * entropy_diff).mean()
             return temp_loss, {
                 'temp_loss': temp_loss,
                 'temperature': temperature,
@@ -137,7 +137,7 @@ class SACAgent(flax.struct.PyTreeNode):
                 actor_loss = -jnp.minimum(actor_loss1,actor_loss2).mean()
                 
             ### Pad Q and logits because actor buffer is padded ###
-            logp = masks * log_p
+            logp = masks * new_logp
             
             if agent.config['discount_entropy']:
                 entropy = -1 * (discounts*logp).sum()/(discounts.sum())

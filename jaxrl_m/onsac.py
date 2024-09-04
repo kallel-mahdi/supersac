@@ -160,7 +160,7 @@ class SACAgent(flax.struct.PyTreeNode):
         
         
         j = 10
-        qs,logps = jnp.zeros((2500,)),jnp.zeros((2500,))
+        qs,logps = jnp.zeros((observations.shape[0],)),jnp.zeros((observations.shape[0],))
         
         call_one_critic = lambda observations,actions,params: agent.critic(observations,actions,params=params)
         call_many_critics = lambda observations,actions : jax.vmap(call_one_critic,in_axes=(None,None,0))(observations, actions,agent.critic.params)
@@ -271,9 +271,8 @@ def create_learner(
             #optax.adam(learning_rate=actor_lr,b1=momentum,b2=0.9),
             optax.adam(learning_rate=actor_lr,b1=momentum),
         )
-        temp = TrainState.create(temp_def, temp_params, tx=optax.sgd(learning_rate=temp_lr))
+        temp = TrainState.create(temp_def, temp_params, tx=optax.adam(learning_rate=temp_lr))
         actor = TrainState.create(actor_def, actor_params, tx=tx)
-        
             
         if target_entropy is None:
 

@@ -29,7 +29,7 @@ parser.add_argument('--project_name',type=str,default="delete_99")
 
 parser.add_argument('--env_name',type=str,default="Walker2d-v5") 
 parser.add_argument('--max_steps',type=int,default=1_000_000) 
-parser.add_argument('--max_episode_steps',type=int,default=500) 
+parser.add_argument('--max_episode_steps',type=int,default=1000) 
 parser.add_argument('--num_rollouts',type=int,default=5) 
 parser.add_argument('--gamma',type=float,default=0.99)
 parser.add_argument('--healthy_reward',type=float,default=1.) 
@@ -48,7 +48,7 @@ parser.add_argument('--momentum',type=float,default=0.)
 parser.add_argument('--num_actor_updates',type=int,default=5) 
 parser.add_argument('--clipping_ratio',type=float,default=0.1) 
 parser.add_argument('--hidden_dims',type=int,default=256) 
-
+parser.add_argument('--episode_based',type=bool,default=True) 
 
 args = parser.parse_args()
 
@@ -143,6 +143,9 @@ def train(args):
     policy_rollouts = deque([], maxlen=20)
     
     R2,bias = jnp.ones(args.num_critics),jnp.zeros(args.num_critics)
+    
+    rollout_fn = rollout_policy if args.episode_based else rollout_policy2
+        
 
     
     with tqdm.tqdm(total=max_steps) as pbar:
@@ -151,7 +154,7 @@ def train(args):
                 
                 logging.debug('policy rollout')
                 if args.on_policy_data: replay_buffer = replay_buffer.reset()
-                replay_buffer,actor_buffer,policy_rollout,policy_return,variance,undisc_policy_return,num_steps = rollout_policy2(
+                replay_buffer,actor_buffer,policy_rollout,policy_return,variance,undisc_policy_return,num_steps = rollout_fn(
                                                                         agent,env,exploration_rng,
                                                                         replay_buffer,actor_buffer,eval=False,
                                                                         num_rollouts=args.num_rollouts,discount = args.gamma,max_length=args.max_episode_steps)

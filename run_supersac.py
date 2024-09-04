@@ -28,8 +28,8 @@ parser.add_argument('--algo_name', type=str, default='sac', help='the name of th
 parser.add_argument('--project_name',type=str,default="delete_99") 
 
 parser.add_argument('--env_name',type=str,default="Walker2d-v5") 
-parser.add_argument('--max_steps',type=int,default=1_000_000) 
-parser.add_argument('--max_episode_steps',type=int,default=1000) 
+parser.add_argument('--max_steps',type=int,default=2_000_000) 
+parser.add_argument('--max_episode_steps',type=int,default=500) 
 parser.add_argument('--num_rollouts',type=int,default=5) 
 parser.add_argument('--gamma',type=float,default=0.99)
 parser.add_argument('--healthy_reward',type=float,default=1.) 
@@ -51,6 +51,7 @@ parser.add_argument('--hidden_dims',type=int,default=256)
 parser.add_argument('--episode_based',type=bool,default=True) 
 
 args = parser.parse_args()
+print(args)
 
 
 def train(args):

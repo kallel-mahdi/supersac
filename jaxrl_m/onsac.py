@@ -21,7 +21,7 @@ def body(i,val):
 
 class Temperature(nn.Module):
     initial_temperature: float = -4.605 ## (log(0.01))
-    #initial_temperature: float = 0.01
+    #initial_temperature: float = 5e-3
     
     
     @nn.compact
@@ -98,7 +98,8 @@ class SACAgent(flax.struct.PyTreeNode):
         def temp_loss_fn(temp_params, entropy, target_entropy):
             temperature = agent.temp(params=temp_params)
             entropy_diff = entropy-target_entropy
-            temp_loss = (temperature * entropy_diff).mean()
+            temp_loss = temperature*(jnp.sign(entropy_diff)*(entropy_diff)**2).mean()
+            #temp_loss = (temperature * entropy_diff).mean()
             return temp_loss, {
                 'temp_loss': temp_loss,
                 'temperature': temperature,
@@ -189,14 +190,15 @@ class SACAgent(flax.struct.PyTreeNode):
             new_actor, actor_info = agent.actor.apply_loss_fn(actor_loss_fn,True,adv)
             new_temp, temp_info = agent.temp.apply_loss_fn(temp_loss_fn,True,actor_info['entropy'], agent.config['target_entropy'])
             agent = agent.replace(rng=new_rng, actor=new_actor,temp=new_temp)
+            #agent = agent.replace(rng=new_rng, actor=new_actor)
         
-        # new_temp, temp_info = agent.temp.apply_loss_fn(temp_loss_fn,True,actor_info['entropy'], agent.config['target_entropy'])
-        # new_temp.params["log_temp"]=jnp.clip(new_temp.params["log_temp"],0.01,1)
-        # agent = agent.replace(temp=new_temp)
+        #new_temp, temp_info = agent.temp.apply_loss_fn(temp_loss_fn,True,actor_info['entropy'], agent.config['target_entropy'])
+        #new_temp.params["log_temp"]=jnp.clip(new_temp.params["log_temp"],5e-3,1)
+        agent = agent.replace(temp=new_temp)
         
         return agent, {**actor_info,**temp_info}
         
-
+        
     @jax.jit
     def sample_actions(agent,   
                        observations: np.ndarray,
@@ -271,7 +273,7 @@ def create_learner(
             #optax.adam(learning_rate=actor_lr,b1=momentum,b2=0.9),
             optax.adam(learning_rate=actor_lr,b1=momentum),
         )
-        temp = TrainState.create(temp_def, temp_params, tx=optax.adam(learning_rate=temp_lr))
+        temp = TrainState.create(temp_def, temp_params, tx=optax.sgd(learning_rate=temp_lr))
         actor = TrainState.create(actor_def, actor_params, tx=tx)
             
         if target_entropy is None:

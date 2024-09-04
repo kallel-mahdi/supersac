@@ -17,9 +17,9 @@ def str2bool(v):
 parser = argparse.ArgumentParser()
 parser.add_argument('--seed',type=int,default=42) 
 parser.add_argument('--env_name',type=str,default="Hopper-v4") 
-parser.add_argument('--project_name',type=str,default="birthday_99") 
+parser.add_argument('--project_name',type=str,default="birthday_99_v2") 
 parser.add_argument('--gamma',type=float,default=0.99)
-parser.add_argument('--max_steps',type=int,default=1_000_000) 
+parser.add_argument('--max_steps',type=int,default=2_000_000) 
 parser.add_argument('--num_rollouts',type=int,default=5) 
 
 parser.add_argument('--on_policy_data',type=str2bool,default=False) 
@@ -35,6 +35,7 @@ parser.add_argument('--healthy_reward',type=float,default=1.)
 parser.add_argument('--episode_based',type=bool,default=True)
 
 args = parser.parse_args()
+
 
 ##############################
 

@@ -48,7 +48,7 @@ parser.add_argument('--momentum',type=float,default=0.)
 parser.add_argument('--num_actor_updates',type=int,default=5) 
 parser.add_argument('--clipping_ratio',type=float,default=0.1) 
 parser.add_argument('--hidden_dims',type=int,default=256) 
-parser.add_argument('--episode_based',type=bool,default=False) 
+parser.add_argument('--episode_based',type=str2bool,default=False) 
 
 args = parser.parse_args()
 print(args)

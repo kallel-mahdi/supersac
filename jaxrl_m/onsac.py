@@ -273,7 +273,7 @@ def create_learner(
             #optax.adam(learning_rate=actor_lr,b1=momentum,b2=0.9),
             optax.adam(learning_rate=actor_lr,b1=momentum),
         )
-        temp = TrainState.create(temp_def, temp_params, tx=optax.sgd(learning_rate=temp_lr))
+        temp = TrainState.create(temp_def, temp_params, tx=optax.adam(learning_rate=temp_lr))
         actor = TrainState.create(actor_def, actor_params, tx=tx)
             
         if target_entropy is None:

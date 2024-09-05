@@ -128,6 +128,7 @@ class Policy(nn.Module):
     tanh_squash_distribution: bool = True
     state_dependent_std: bool = True
     use_bias : bool = True
+    use_layer_norm : bool = True,
     final_fc_init_scale: float = 1e-2
 
     @nn.compact
@@ -137,7 +138,7 @@ class Policy(nn.Module):
         outputs = MLP(
             self.hidden_dims,
             activate_final=True,
-            use_layer_norm=True,
+            use_layer_norm=self.use_layer_norm,
         )(observations)
 
         means = nn.Dense(

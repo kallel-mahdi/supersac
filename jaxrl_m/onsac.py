@@ -82,10 +82,10 @@ class SACAgent(flax.struct.PyTreeNode):
        
     
         # ### Reset optimizers 
-        new_critic_params = agent.critic.params
-        new_opt_state = jax.vmap(agent.critic.tx.init)(new_critic_params)
-        new_critics = agent.critic.replace(params=new_critic_params,opt_state=new_opt_state)
-        agent = agent.replace(critic=new_critics)
+        # new_critic_params = agent.critic.params
+        # new_opt_state = jax.vmap(agent.critic.tx.init)(new_critic_params)
+        # new_critics = agent.critic.replace(params=new_critic_params,opt_state=new_opt_state)
+        # agent = agent.replace(critic=new_critics)
         ### Train critic sequentially
         agent,batches = jax.lax.fori_loop(0,2500,body,(agent,batches))
         
@@ -247,6 +247,7 @@ def create_learner(
                 num_actor_updates,
                 clipping_ratio,
                 hidden_dims: Sequence[int],
+                use_layer_norm : bool,
                 target_entropy: float = None,
             **kwargs):
 
@@ -257,9 +258,9 @@ def create_learner(
 
         action_dim = actions.shape[-1]
         actor_def = Policy(hidden_dims, action_dim=action_dim,
-            state_dependent_std=True, tanh_squash_distribution=False)
+            state_dependent_std=True, tanh_squash_distribution=False,use_layer_norm=use_layer_norm)
 
-        critic_def = OriginalCritic(hidden_dims)
+        critic_def = OriginalCritic(hidden_dims,use_layer_norm=use_layer_norm)
         critic_keys  = jax.random.split(critic_key, num_critics)
         critic_params = jax.vmap(critic_def.init,in_axes=(0,None,None))(critic_keys, observations, actions)['params']
         critics = jax.vmap(TrainState.create,in_axes=(None,0,None))(critic_def,critic_params,optax.adam(learning_rate=critic_lr))

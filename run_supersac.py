@@ -12,7 +12,7 @@ from jaxrl_m.normalize import *
 
 logging.basicConfig(level=logging.CRITICAL)
 #jax.config.update("jax_enable_x64", True)
-
+jax.config.update('jax_default_matmul_precision', 'float32')
 
 # Set env variables
 os.environ["WANDB_API_KEY"]="28996bd59f1ba2c5a8c3f2cc23d8673c327ae230"
@@ -22,16 +22,16 @@ os.environ['TF_CUDNN_DETERMINISTIC'] = '1'
 ##############################
 parser = argparse.ArgumentParser()
 
-parser.add_argument('--seed',type=int,default=21) 
+parser.add_argument('--seed',type=int,default=42) 
 
 parser.add_argument('--algo_name', type=str, default='sac', help='the name of the RL algorithm')
-parser.add_argument('--project_name',type=str,default="delete_99") 
+parser.add_argument('--project_name',type=str,default="delete_prague") 
 
-parser.add_argument('--env_name',type=str,default="Hopper-v5") 
-parser.add_argument('--max_steps',type=int,default=2_000_000) 
-parser.add_argument('--max_episode_steps',type=int,default=1000) 
-parser.add_argument('--num_rollouts',type=int,default=4) 
-parser.add_argument('--gamma',type=float,default=0.995)
+parser.add_argument('--env_name',type=str,default="Walker2d-v4") 
+parser.add_argument('--max_steps',type=int,default=1_000_000) 
+parser.add_argument('--max_episode_steps',type=int,default=500) 
+parser.add_argument('--num_rollouts',type=int,default=5) 
+parser.add_argument('--gamma',type=float,default=0.99)
 parser.add_argument('--healthy_reward',type=float,default=1.) 
 parser.add_argument('--entropy_coeff',type=float,default=1.) 
 
@@ -43,7 +43,7 @@ parser.add_argument('--num_critics',type=int,default=5)
 
 parser.add_argument('--critic_lr',type=float,default=3e-4) 
 parser.add_argument('--actor_lr',type=float,default=3e-4) 
-parser.add_argument('--temp_lr',type=float,default=1e-3)
+parser.add_argument('--temp_lr',type=float,default=3e-4)
 parser.add_argument('--use_layer_norm',type=str2bool,default=True)
 
 parser.add_argument('--momentum',type=float,default=0.) 
@@ -179,8 +179,8 @@ def train(args):
                 idxs = jax.random.choice(agent.rng,a=transitions['observations'].shape[0], shape=(2500,256), replace=True)
                 batches = jax.vmap(lambda i: jax.tree_map(lambda x: x[i], transitions))(idxs)
                 
-                with jax.default_matmul_precision("float32"):
-                    agent = agent.update_critics_seq(batches,R2)
+                
+                agent = agent.update_critics_seq(batches,R2)
                         
                 ### Update actor ###
                 actor_batch = actor_buffer.get_all()    
@@ -195,6 +195,7 @@ def train(args):
                     wandb.log(R2_train_info, step=int(i),commit=False)
                     
                         
+                #with jax.default_matmul_precision("float32"):
                 agent, actor_update_info = agent.update_actor(actor_batch,R2)    
                     
                 critic_update_info = {}

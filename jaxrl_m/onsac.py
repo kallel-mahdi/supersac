@@ -131,7 +131,7 @@ class SACAgent(flax.struct.PyTreeNode):
             actor_loss1 = masks*adv * ratio
             actor_loss2 = masks*adv * jnp.clip(ratio, 1 - clip_coef, 1 + clip_coef)
 
-            if agent.config['discount_entropy']:
+            if agent.config['discount_actor']:
                 actor_loss = -jnp.minimum(discounts*actor_loss1,discounts*actor_loss2).sum()/(discounts.sum())
                 #actor_loss = -(discounts*ratio*adv).sum()/(discounts.sum())
             else : 

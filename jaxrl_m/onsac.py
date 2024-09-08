@@ -87,8 +87,9 @@ class SACAgent(flax.struct.PyTreeNode):
         # new_opt_state = jax.vmap(agent.critic.tx.init)(new_critic_params)
         # new_critics = agent.critic.replace(params=new_critic_params,opt_state=new_opt_state)
         # agent = agent.replace(critic=new_critics)
-        ### Train critic sequentially
-        agent,batches = jax.lax.fori_loop(0,2500,body,(agent,batches))
+        ### Train critic 
+        size = batches["observations"].shape[0]
+        agent,batches = jax.lax.fori_loop(0,size,body,(agent,batches))
         
         return agent
 
@@ -191,11 +192,6 @@ class SACAgent(flax.struct.PyTreeNode):
             new_actor, actor_info = agent.actor.apply_loss_fn(actor_loss_fn,True,adv)
             new_temp, temp_info = agent.temp.apply_loss_fn(temp_loss_fn,True,actor_info['entropy'], agent.config['target_entropy'])
             agent = agent.replace(rng=new_rng, actor=new_actor,temp=new_temp)
-            #agent = agent.replace(rng=new_rng, actor=new_actor)
-        
-        #new_temp, temp_info = agent.temp.apply_loss_fn(temp_loss_fn,True,actor_info['entropy'], agent.config['target_entropy'])
-        #new_temp.params["log_temp"]=jnp.clip(new_temp.params["log_temp"],5e-3,1)
-        agent = agent.replace(temp=new_temp)
         
         return agent, {**actor_info,**temp_info}
         

@@ -29,17 +29,17 @@ parser.add_argument('--project_name',type=str,default="delete_prague")
 
 parser.add_argument('--env_name',type=str,default="Walker2d-v4") 
 parser.add_argument('--max_steps',type=int,default=1_000_000) 
-parser.add_argument('--max_episode_steps',type=int,default=500) 
-parser.add_argument('--num_rollouts',type=int,default=5) 
-parser.add_argument('--gamma',type=float,default=0.99)
-parser.add_argument('--healthy_reward',type=float,default=1.) 
+parser.add_argument('--max_episode_steps',type=int,default=1000) 
+parser.add_argument('--num_rollouts',type=int,default=2) 
+parser.add_argument('--gamma',type=float,default=0.995)
+parser.add_argument('--healthy_reward',type=float,default=0.75) 
 parser.add_argument('--entropy_coeff',type=float,default=1.) 
 
 parser.add_argument('--discount_actor',type=str2bool,default=True)
 parser.add_argument('--discount_entropy',type=str2bool,default=True) 
 parser.add_argument('--on_policy_data',type=str2bool,default=False)
 parser.add_argument('--adaptive_critics',type=str2bool,default=False) 
-parser.add_argument('--num_critics',type=int,default=5)
+parser.add_argument('--num_critics',type=int,default=2)
 
 parser.add_argument('--critic_lr',type=float,default=3e-4) 
 parser.add_argument('--actor_lr',type=float,default=3e-4) 
@@ -91,7 +91,6 @@ def train(args):
         'hyperparam_dict':args.__dict__,
         }
     wandb_run = setup_wandb(**wandb_config)
-    
     
     ### HalfCheetah does not have healthy_reward argument
     if 'HalfCheetah' in args.env_name or 'Pendulum' in args.env_name:
@@ -176,7 +175,7 @@ def train(args):
                 logging.debug('update critics')
                 transitions = replay_buffer.get_all()
                 #transitions["rewards"] = env.normalize(transitions["rewards"])
-                idxs = jax.random.choice(agent.rng,a=transitions['observations'].shape[0], shape=(2500,256), replace=True)
+                idxs = jax.random.choice(agent.rng,a=transitions['observations'].shape[0], shape=(args.num_rollouts*args.max_episode_steps,256), replace=True)
                 batches = jax.vmap(lambda i: jax.tree_map(lambda x: x[i], transitions))(idxs)
                 
                 

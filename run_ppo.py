@@ -13,45 +13,43 @@ import torch.optim as optim
 from torch.distributions.normal import Normal
 #from torch.utils.tensorboard import SummaryWriter
 from jaxrl_m.wandb import setup_wandb
+from jaxrl_m.rollout import *
 import os
 import argparse
 import envpool
 import wandb
 import numpy as jnp
 from collections import deque
+from wrappers import *
+import copy
+
 os.environ["WANDB_API_KEY"]="28996bd59f1ba2c5a8c3f2cc23d8673c327ae230"
 np.seterr(all='raise')
 
-# def evaluate(
-#     agent,
-#     make_env,
-#     env_id: str,
-#     eval_episodes: int,
-#     run_name: str,
-#     Model: torch.nn.Module,
-#     device: torch.device = torch.device("cpu"),
-#     capture_video: bool = True,
-#     gamma: float = 0.99,
-# ):
-#     envs = gym.vector.SyncVectorEnv([make_env(env_id, 0, capture_video, run_name, gamma)])
-#     agent = Model(envs).to(device)
-#     agent.eval()
+def one(env, name):
+    """
+    If this env does not have the attribute, then we try to 
+    recursively access that attribute from inner envs.
+    """
+    while not hasattr(env, name):
+        if hasattr(env, 'env'): # while the env is still wrapped,
+            env = env.env
+        else: # reached the innermost env and still didn't find it.
+            raise AttributeError(f'{env} has no attribute {name}.')
+    return getattr(env, name) # reached if env **has** attribute name.
 
-#     obs, _ = envs.reset()
-#     episodic_returns = []
-#     while len(episodic_returns) < eval_episodes:
-#         actions, _, _, _ = agent.get_action_and_value(torch.Tensor(obs).to(device))
-#         next_obs, _, _, _, infos = envs.step(actions.cpu().numpy())
-#         if "final_info" in infos:
-#             for info in infos["final_info"]:
-#                 if "episode" not in info:
-#                     continue
-#                 print(f"eval_episode={len(episodic_returns)}, episodic_return={info['episode']['r']}")
-#                 episodic_returns += [info["episode"]["r"]]
-#         obs = next_obs
 
-#     return episodic_returns
-
+def two(env, name):
+    """
+    If this env does not have the attribute, then we try to 
+    recursively access that attribute from inner envs.
+    """
+    while not hasattr(env, name):
+        if hasattr(env, 'env'): # while the env is still wrapped,
+            env = env.env
+        else: # reached the innermost env and still didn't find it.
+            raise AttributeError(f'{env} has no attribute {name}.')
+    return setattr(env, name) # reached if env **has** attribute name.
 
 def str2bool(v):
     if isinstance(v, bool):
@@ -75,7 +73,7 @@ parser.add_argument('--capture_video', action='store_true',default=False, help='
 parser.add_argument('--save_model', action='store_true',default=False, help='whether to save model into the `runs/{run_name}` folder')
 parser.add_argument('--upload_model', action='store_true',default=False, help='whether to upload the saved model to huggingface')
 parser.add_argument('--hf_entity', type=str, default='', help='the user or org name of the model repository from the Hugging Face Hub')
-parser.add_argument('--env_name', type=str, default='Hopper-v4', help='the id of the environment')
+parser.add_argument('--env_name', type=str, default='Walker2d-v5', help='the id of the environment')
 parser.add_argument('--max_steps', type=int, default=1000000, help='total timesteps of the experiments')
 parser.add_argument('--learning_rate', type=float, default=3e-4, help='the learning rate of the optimizer')
 parser.add_argument('--num_envs', type=int, default=1, help='the number of parallel game environments')
@@ -109,10 +107,11 @@ args = parser.parse_args()
 def make_env(env_name, idx, capture_video, run_name, gamma):
     def thunk():
         
-        env = gym.make(env_name)
+        env = gym.make(env_name,max_episode_steps=1000)
         env = gym.wrappers.FlattenObservation(env)  # deal with dm_control's Dict observation space
         env = gym.wrappers.RecordEpisodeStatistics(env)
         env = gym.wrappers.ClipAction(env)
+        #env = gym.wrappers.NormalizeObservation(env)
         env = gym.wrappers.NormalizeObservation(env)
         env = gym.wrappers.TransformObservation(env, lambda obs: np.clip(obs, -10, 10),env.observation_space)
         if args.normalize_reward :
@@ -172,15 +171,10 @@ class Agent(nn.Module):
         action = probs.sample()
         return action.cpu().detach().numpy()
     
-    def get_deterministic_action(self, x, action=None):
+    def deterministic_action(self, x, action=None):
+        x = torch.Tensor(x).to(device)
         action_mean = self.actor_mean(x)
-        action_logstd = self.actor_logstd.expand_as(action_mean)
-        action_std = torch.exp(action_logstd)
-        probs = Normal(action_mean, action_std)
-        if action is None:
-            action = probs.sample()
-        return action, probs.log_prob(action).sum(1), probs.entropy().sum(1), self.critic(x)
- 
+        return action_mean.cpu().detach().numpy()
 
 if __name__ == "__main__":
     
@@ -210,6 +204,8 @@ if __name__ == "__main__":
         [make_env(args.env_name, i, args.capture_video, run_name, args.gamma) for i in range(args.num_envs)]
     )
     assert isinstance(envs.single_action_space, gym.spaces.Box), "only continuous action space is supported"
+    
+    
     #eval_env = envpool.make(args.env_name, env_type="gymnasium", num_envs=10)
     log_interval = 10000
     unlogged_steps,total_steps = 0,0
@@ -348,9 +344,22 @@ if __name__ == "__main__":
         if unlogged_steps >= log_interval:
     
             unlogged_steps = 0
-            eval_metrics = {"evaluation/undisc_policy_return": np.mean(last_returns)}
+            #eval_metrics = {"evaluation/undisc_policy_return": np.mean(last_returns)}
+            
+            #print(one(envs.env,name="return_rms"),two(envs.env,name="obs_rms"))
+            
+            eval_env = copy.deepcopy(envs)
+            _,_,policy_rollout,policy_return,variance,undisc_policy_return,num_steps = rollout_policy_ppo(
+                                                                    agent,eval_env,None,
+                                                                    None,None,eval=True,
+                                                                    num_rollouts=10,
+                                                                    discount = args.gamma,max_length=1000)
+            
+            eval_metrics = {"policy_return": policy_return,"std": jnp.sqrt(variance),"undisc_policy_return": undisc_policy_return}
+
+            eval_metrics = {f'evaluation/{k}': v for k, v in eval_metrics.items()}
+            
             wandb.log(eval_metrics, step=int(total_steps),commit=True)
-        
                     
 
       

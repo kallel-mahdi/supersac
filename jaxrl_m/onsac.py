@@ -22,7 +22,7 @@ def body(i,val):
 class Temperature(nn.Module):
     #initial_temperature: float = -4.605 ## (log(0.01))
     #initial_temperature: float = 5e-3
-    initial_temperature: float = -3.912 ## (log(0.01))
+    initial_temperature: float = -3.912 ## (log(0.02))
     
     
     @nn.compact

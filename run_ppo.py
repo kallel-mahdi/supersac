@@ -20,7 +20,6 @@ import envpool
 import wandb
 import numpy as jnp
 from collections import deque
-from wrappers import *
 import copy
 
 os.environ["WANDB_API_KEY"]="28996bd59f1ba2c5a8c3f2cc23d8673c327ae230"

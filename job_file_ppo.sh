@@ -8,7 +8,7 @@ unset SLURM_EXPORT_ENV
 
 export HTTPS_PROXY=http://proxy:80
 export WANDB_API_KEY=28996bd59f1ba2c5a8c3f2cc23d8673c327ae230
-module load python/3.9-anaconda cuda cudnn
+module load python/3.9-anaconda
 
-srun .ppo_env/bin/python run_ppo.py "$@"
+srun .venv3/bin/python run_ppo.py "$@"
 

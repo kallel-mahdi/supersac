@@ -17,7 +17,7 @@ def str2bool(v):
 parser = argparse.ArgumentParser()
 parser.add_argument('--seed',type=int,default=42) 
 parser.add_argument('--env_name',type=str,default="Hopper-v5") 
-parser.add_argument('--project_name',type=str,default="bliz_obama") 
+parser.add_argument('--project_name',type=str,default="iclr_close") 
 parser.add_argument('--gamma',type=float,default=0.99)
 parser.add_argument('--max_steps',type=int,default=1_000_000) 
 parser.add_argument('--num_rollouts',type=int,default=4) 
@@ -40,7 +40,7 @@ args = parser.parse_args()
 ##############################
 
 np.random.seed(42)
-seeds = list(np.random.randint(0,1e6,5))
+seeds = list(np.random.randint(0,1e6,10))
 configs = itertools.product(seeds,[args.env_name],[args.project_name],
                             [args.gamma],[args.max_steps],[args.num_rollouts],
                             [args.num_critics],[args.adaptive_critics],[args.discount_entropy],[args.discount_actor],[args.entropy_coeff],

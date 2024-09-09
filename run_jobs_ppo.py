@@ -19,14 +19,14 @@ parser.add_argument('--seed',type=int,default=42)
 parser.add_argument('--env_name',type=str,default="Hopper-v4") 
 parser.add_argument('--project_name',type=str,default="ppo_v5") 
 parser.add_argument('--gamma',type=float,default=0.99)
-parser.add_argument('--max_steps',type=int,default=2_000_000) 
+parser.add_argument('--max_steps',type=int,default=1_000_000) 
 parser.add_argument('--normalize_reward',type=bool,default=True) 
 #parser.add_argument('--max_episode_steps',type=int,default=500) 
 args = parser.parse_args()
 ##############################
 
 np.random.seed(42)
-seeds = list(np.random.randint(0,1e6,10))
+seeds = list(np.random.randint(0,1e6,5))
 configs = itertools.product(seeds,[args.env_name],[args.project_name],
                             [args.gamma],[args.max_steps],[args.normalize_reward])
             

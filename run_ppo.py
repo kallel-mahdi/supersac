@@ -348,13 +348,12 @@ if __name__ == "__main__":
             #print(one(envs.env,name="return_rms"),two(envs.env,name="obs_rms"))
             
             eval_env = copy.deepcopy(envs)
-            _,_,policy_rollout,policy_return,variance,undisc_policy_return,num_steps = rollout_policy_ppo(
-                                                                    agent,eval_env,None,
-                                                                    None,None,eval=True,
+            undisc_policy_return = rollout_policy_ppo(
+                                                                    agent,env = eval_env,
                                                                     num_rollouts=10,
                                                                     discount = args.gamma,max_length=1000)
             
-            eval_metrics = {"policy_return": policy_return,"std": jnp.sqrt(variance),"undisc_policy_return": undisc_policy_return}
+            eval_metrics = {"undisc_policy_return": undisc_policy_return}
 
             eval_metrics = {f'evaluation/{k}': v for k, v in eval_metrics.items()}
             

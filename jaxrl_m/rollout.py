@@ -61,7 +61,7 @@ def rollout_policy(agent,env,exploration_rng,
         
         next_obs, reward, done, truncated, info = env.step(action)
         
-        obs,action,done = obs.squeeze(),action.squeeze(),done.squeeze()
+        #obs,action,done = obs.squeeze(),action.squeeze(),done.squeeze()
         
         mask = float(not done)
 
@@ -114,76 +114,30 @@ def rollout_policy(agent,env,exploration_rng,
 
 
 
-def rollout_policy_ppo(agent,env,exploration_rng,
-                   replay_buffer=None,actor_buffer=None,
-                   eval=False,num_rollouts=5,discount=0.99,max_length=500):
+def rollout_policy_ppo(agent,env,num_rollouts=5,discount=0.99,max_length=500):
     
-    if actor_buffer is not None:
-        actor_buffer = actor_buffer.reset()
+    
+    returns = []
     obs,_ = env.reset()  
-    n_steps,n_rollouts,episode_step,disc,mask = 0,0,0,1.,1.
-    max_steps = num_rollouts*max_length    
-    observations,disc_masks,rewards = np.zeros((max_steps,obs.shape[1])),np.zeros((max_steps,)),np.zeros((max_steps,))
-    policy_returns = np.zeros((num_rollouts,))
-    
+    n_rollouts = 0
     
     while n_rollouts < num_rollouts:
         
-        if eval:
-            action = agent.deterministic_action(obs)
-            log_p,pre_action = 0.,action
-      
+    
+        action = agent.deterministic_action(obs)
+        log_p,pre_action = 0.,action
+    
         
         next_obs, reward, done, truncated, info = env.step(action)
         
-        ### Squeeze the VecEnv stuff
-        obs,action,done = obs.squeeze(),action.squeeze(),done.squeeze()
-        
-        mask = float(not done)
-
-        transition = dict(observations=obs,actions=action,
-            rewards=reward,masks=mask,next_observations=next_obs,discounts=disc,
-            log_probs=log_p,pre_actions=pre_action)
-        
-        if replay_buffer is not None:
-            replay_buffer.add_transition(transition)
-        
-        if actor_buffer is not None:
-            actor_buffer.add_transition(transition)
-
-        
-
-        #print(max_length,n_rollouts,episode_step)
-        observations[max_length*n_rollouts+episode_step] = obs
-        disc_masks[max_length*n_rollouts+episode_step] = disc
-        rewards[max_length*n_rollouts+episode_step] = reward
-        
         obs = next_obs
-        disc *= (discount*mask)
-        episode_step += 1
-        n_steps += 1
-        
-        if (done or truncated or n_steps>=max_length) :
-            policy_returns[n_rollouts] = (disc_masks[max_length*n_rollouts:max_length*(n_rollouts+1)]*rewards[max_length*n_rollouts:max_length*(n_rollouts+1)]).sum()
-            obs,_= env.reset()
-            n_rollouts += 1
-            episode_step = 0
-            disc,mask = 1.,1.
-            
-            
-    policy_return = policy_returns.mean()
-    variance = policy_returns.var()
-    undisc_policy_return = rewards.sum()/num_rollouts
     
-    policy_rollout = None
+        if "episode" in info.keys():
+                
+                returns.append(info["episode"]["r"])
+                n_rollouts+=1
     
-    return replay_buffer,actor_buffer,policy_rollout,policy_return,variance,undisc_policy_return,n_steps
-
-
-
-
-
-
+    return np.mean(np.array(returns))
 
 def rollout_policy2(agent,env,exploration_rng,
                    replay_buffer=None,actor_buffer=None,

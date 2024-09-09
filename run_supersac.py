@@ -25,7 +25,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--seed',type=int,default=42) 
 
 parser.add_argument('--algo_name', type=str, default='superppo', help='the name of the RL algorithm')
-parser.add_argument('--project_name',type=str,default="iclr_close") 
+parser.add_argument('--project_name',type=str,default="single_exp") 
 
 parser.add_argument('--env_name',type=str,default="Hopper-v5") 
 parser.add_argument('--max_steps',type=int,default=1_000_000) 

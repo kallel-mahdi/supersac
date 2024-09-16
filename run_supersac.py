@@ -6,7 +6,7 @@ import os
 
 import jax.numpy as jnp
 
-from jaxrl_m.onsac import *
+from jaxrl_m.onsac_clean import *
 from jaxrl_m.utils import *
 from jaxrl_m.normalize import *
 
@@ -27,15 +27,16 @@ parser.add_argument('--seed',type=int,default=42)
 parser.add_argument('--algo_name', type=str, default='superppo', help='the name of the RL algorithm')
 parser.add_argument('--project_name',type=str,default="single_exp") 
 
-parser.add_argument('--env_name',type=str,default="Walker2d-v5") 
-parser.add_argument('--max_steps',type=int,default=1_000_000) 
-parser.add_argument('--max_episode_steps',type=int,default=500) 
+parser.add_argument('--env_name',type=str,default="Hopper-v5") 
+parser.add_argument('--max_steps',type=int,default=2_000_000) 
+parser.add_argument('--max_episode_steps',type=int,default=1000) 
 parser.add_argument('--num_rollouts',type=int,default=4) 
-parser.add_argument('--gamma',type=float,default=0.99)
+parser.add_argument('--gamma',type=float,default=0.995)
 parser.add_argument('--healthy_reward',type=float,default=1.) 
 parser.add_argument('--entropy_coeff',type=float,default=1.) 
 
 parser.add_argument('--discount_actor',type=str2bool,default=True)
+parser.add_argument('--min_target',type=str2bool,default=True)
 parser.add_argument('--discount_entropy',type=str2bool,default=True) 
 parser.add_argument('--on_policy_data',type=str2bool,default=False)
 parser.add_argument('--adaptive_critics',type=str2bool,default=False) 
@@ -47,8 +48,8 @@ parser.add_argument('--temp_lr',type=float,default=3e-4)
 parser.add_argument('--use_layer_norm',type=str2bool,default=True)
 
 parser.add_argument('--momentum',type=float,default=0.) 
-parser.add_argument('--num_actor_updates',type=int,default=10) 
-parser.add_argument('--clipping_ratio',type=float,default=0.2) 
+parser.add_argument('--num_actor_updates',type=int,default=5) 
+parser.add_argument('--clipping_ratio',type=float,default=0.1) 
 parser.add_argument('--hidden_dims',type=int,default=256) 
 parser.add_argument('--episode_based',type=str2bool,default=False) 
 
@@ -93,7 +94,7 @@ def train(args):
     wandb_run = setup_wandb(**wandb_config)
     
     ### HalfCheetah does not have healthy_reward argument
-    if 'HalfCheetah' in args.env_name or 'Pendulum' in args.env_name:
+    if 'HalfCheetah' in args.env_name or 'Standup' in args.env_name:
         env = EpisodeMonitor(gym.make(args.env_name, max_episode_steps=args.max_episode_steps))
     else:
         print(f'env_name: {args.env_name}, max_episode_steps: {args.max_episode_steps}, healthy_reward: {args.healthy_reward}')
@@ -123,6 +124,7 @@ def train(args):
                     max_steps=max_steps,
                     discount=args.gamma,
                     discount_actor=args.discount_actor,
+                    min_target=args.min_target,
                     discount_entropy=args.discount_entropy,
                     adaptive_critics=args.adaptive_critics,
                     num_critics= args.num_critics,
@@ -133,7 +135,8 @@ def train(args):
                     momentum=args.momentum,
                     clipping_ratio=args.clipping_ratio,
                     num_actor_updates=args.num_actor_updates,
-                    hidden_dims=(args.hidden_dims,args.hidden_dims),
+                    actor_hidden_dims=(args.hidden_dims,args.hidden_dims),
+                    critic_hidden_dims=(args.hidden_dims,args.hidden_dims),
                     use_layer_norm= args.use_layer_norm,
                     #**FLAGS.config
                     )
@@ -174,11 +177,8 @@ def train(args):
                 ### Update critics ###:
                 logging.debug('update critics')
                 transitions = replay_buffer.get_all()
-                #transitions["rewards"] = env.normalize(transitions["rewards"])
                 idxs = jax.random.choice(agent.rng,a=transitions['observations'].shape[0], shape=(args.num_rollouts*args.max_episode_steps,256), replace=True)
-                batches = jax.vmap(lambda i: jax.tree_map(lambda x: x[i], transitions))(idxs)
-                
-                
+                batches = jax.vmap(lambda i: jax.tree.map(lambda x: x[i], transitions))(idxs)
                 agent = agent.update_critics_seq(batches,R2)
                         
                 ### Update actor ###

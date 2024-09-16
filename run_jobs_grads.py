@@ -12,7 +12,6 @@ def str2bool(v):
         return False
     else:
         raise argparse.ArgumentTypeError('Boolean value expected.')
-    
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--seed',type=int,default=42) 

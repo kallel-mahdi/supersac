@@ -209,7 +209,7 @@ def rollout_policy2(agent,env,exploration_rng,
 
 def rollout_policy_lqr(agent,env,exploration_rng,
                    replay_buffer=None,actor_buffer=None,
-                   warmup=False,num_rollouts=5,discount=0.99,max_length=500):
+                   eval=False,num_rollouts=5,discount=0.99,max_length=500):
     
     if actor_buffer is not None:
         actor_buffer = actor_buffer.reset()
@@ -223,18 +223,23 @@ def rollout_policy_lqr(agent,env,exploration_rng,
     while n_rollouts < num_rollouts:
         
         
-        if warmup:
-            action = env.action_space.sample()
+        if eval:
+            action = agent.deterministic_action(obs)
+            log_p,pre_action = 0.,action
         else:
             exploration_rng, key = jax.random.split(exploration_rng)
-            action = agent.sample_actions(obs,seed=exploration_rng)
+            action,log_p,pre_action = agent.sample_actions(obs,seed=exploration_rng)
+            
+            
         
+        #next_obs, reward, done, truncated, info = env.step(action)
         next_obs, reward, done, info = env.step(action)
         
         mask = float(not done)
 
         transition = dict(observations=obs,actions=action,
-            rewards=reward,masks=mask,next_observations=next_obs,discounts=disc)
+            rewards=reward,masks=mask,next_observations=next_obs,discounts=disc,
+            log_probs=log_p,pre_actions=pre_action)
         
         if replay_buffer is not None:
             replay_buffer.add_transition(transition)
@@ -253,7 +258,7 @@ def rollout_policy_lqr(agent,env,exploration_rng,
         episode_step += 1
         n_steps += 1
         
-        if done or n_steps%500==0:
+        if done or n_steps%max_length==0:
             policy_returns[n_rollouts] = (disc_masks[max_length*n_rollouts:max_length*(n_rollouts+1)]*rewards[max_length*n_rollouts:max_length*(n_rollouts+1)]).sum()
             obs = env.reset()
             n_rollouts += 1

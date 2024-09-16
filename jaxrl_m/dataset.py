@@ -6,7 +6,7 @@ import jax
 import jax.numpy as jnp
 
 def get_size(data: Data) -> int:
-    sizes = tree_util.tree_map(lambda arr: len(arr), data)
+    sizes = jax.tree.map(lambda arr: len(arr), data)
     return max(tree_util.tree_leaves(sizes))
 
 
@@ -46,7 +46,7 @@ class Dataset(FrozenDict):
         return self.get_subset(indx)
 
     def get_subset(self, indx):
-        return tree_util.tree_map(lambda arr: arr[indx], self._dict)
+        return jax.tree.map(lambda arr: arr[indx], self._dict)
 
 
 class ReplayBuffer(Dataset):
@@ -73,7 +73,7 @@ class ReplayBuffer(Dataset):
             example = np.array(example)
             return np.zeros((size, *example.shape), dtype=example.dtype)
 
-        buffer_dict = tree_util.tree_map(create_buffer, transition)
+        buffer_dict = jax.tree.map(create_buffer, transition)
         return cls(buffer_dict)
 
     @classmethod
@@ -83,7 +83,7 @@ class ReplayBuffer(Dataset):
             buffer[: len(init_buffer)] = init_buffer
             return buffer
 
-        buffer_dict = tree_util.tree_map(create_buffer, init_dataset)
+        buffer_dict = jax.tree.map(create_buffer, init_dataset)
         dataset = cls(buffer_dict)
         dataset.size = dataset.pointer = get_size(init_dataset)
         return dataset
@@ -99,14 +99,14 @@ class ReplayBuffer(Dataset):
         def set_idx(buffer, new_element):
             buffer[self.pointer] = new_element
 
-        tree_util.tree_map(set_idx, self._dict, transition)
+        jax.tree.map(set_idx, self._dict, transition)
         self.pointer = (self.pointer + 1) % self.max_size
         self.size = max(self.pointer, self.size)
     
     def get_all(self):
         
-        batch = jax.tree_map(lambda x: x[:self.size], self._dict)
-        return jax.tree_map(lambda x: jax.device_put(x), batch)
+        batch = jax.tree.map(lambda x: x[:self.size], self._dict)
+        return jax.tree.map(lambda x: jax.device_put(x), batch)
     
     def reset(self):
         self.size = 0
@@ -119,9 +119,9 @@ class ActorReplayBuffer(ReplayBuffer):
     def get_all(self):
         
         
-            batch = jax.tree_map(lambda x: x[:self.size], self._dict)
-            batch = jax.tree_map(lambda x: jnp.pad(x, ((0, self.max_size - self.size),) + ((0, 0),) * (x.ndim - 1), mode='constant'), batch)
+            batch = jax.tree.map(lambda x: x[:self.size], self._dict)
+            batch = jax.tree.map(lambda x: jnp.pad(x, ((0, self.max_size - self.size),) + ((0, 0),) * (x.ndim - 1), mode='constant'), batch)
         
-            return jax.tree_map(lambda x: jax.device_put(x), batch)
+            return jax.tree.map(lambda x: jax.device_put(x), batch)
         
         

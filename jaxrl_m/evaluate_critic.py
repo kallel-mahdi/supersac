@@ -56,7 +56,7 @@ def estimate_return(acq_rollout,
     
     
     
-#     policy_rollout = jax.tree_map(lambda x: x[i], policy_rollouts)
+#     policy_rollout = jax.tree.map(lambda x: x[i], policy_rollouts)
     
 #     critics_prediction = predict_many_critics()
 #     predictions = running_result.at[i].set(v)
@@ -100,7 +100,7 @@ def evaluate_many_critics(anc_agent, anc_return, policy_rollouts,num_critics):
     ### We do it sequentially as it's not a bottleneck
     R2_l, bias_l = [], []
     for i in range(num_critics):
-        critic_params = jax.tree_map(lambda x: x[i], anc_critic_params)
+        critic_params = jax.tree.map(lambda x: x[i], anc_critic_params)
         R2, bias = tmp(critic_params)
         R2_l.append(R2)
         bias_l.append(bias)

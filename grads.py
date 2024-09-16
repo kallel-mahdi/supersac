@@ -14,7 +14,7 @@ logging.basicConfig(level=logging.CRITICAL)
 
 
 def get_batch(i,batches):
-    return  jax.tree_map(lambda x: x[i], batches)
+    return  jax.tree.map(lambda x: x[i], batches)
 
 def body(i,val):
     agent,batches = val
@@ -474,7 +474,7 @@ with tqdm.tqdm(total=args.max_steps) as pbar:
                 logging.debug('update critics')
                 transitions = replay_buffer.get_all()
                 idxs = jax.random.choice(agent.rng,a=transitions['observations'].shape[0], shape=(NUM_UPDATES,256), replace=True)
-                batches = jax.vmap(lambda i: jax.tree_map(lambda x: x[i], transitions))(idxs)
+                batches = jax.vmap(lambda i: jax.tree.map(lambda x: x[i], transitions))(idxs)
                 agent = agent.update_critics_seq(batches,R2,big=False)
             
             
@@ -486,13 +486,13 @@ with tqdm.tqdm(total=args.max_steps) as pbar:
                                                                     num_rollouts=200,discount = args.gamma,max_length=args.max_episode_steps)
                     transitions = big_buffer.get_all()
                     idxs = jax.random.choice(agent.rng,a=transitions['observations'].shape[0], shape=(2*NUM_UPDATES,256), replace=True)
-                    batches = jax.vmap(lambda i: jax.tree_map(lambda x: x[i], transitions))(idxs)
+                    batches = jax.vmap(lambda i: jax.tree.map(lambda x: x[i], transitions))(idxs)
                     agent = agent.update_critics_seq(batches,R2,big=True)
                     actor_batch = actor_buffer.get_all()
                     _,_,grads = agent.update_actor(actor_batch,agent.critic.params,R2)    
                     _,_,big_grads = agent.update_actor(actor_batch,agent.big_critic.params,R2)
                     def flatten(grads):    
-                        tmp = jax.tree_map(lambda x: jnp.reshape(x,(-1,)),grads)
+                        tmp = jax.tree.map(lambda x: jnp.reshape(x,(-1,)),grads)
                         tmp = jax.tree_util.tree_flatten(tmp)[0]
                         tmp = jnp.concatenate(tmp)
                         return tmp

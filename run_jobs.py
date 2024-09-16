@@ -28,6 +28,7 @@ parser.add_argument('--discount_actor',type=str2bool,default=True)
 parser.add_argument('--momentum',type=float,default=0.) 
 parser.add_argument('--num_critics',type=int,default=2) 
 parser.add_argument('--adaptive_critics',type=str2bool,default=False) 
+parser.add_argument('--min_target',type=str2bool,default=True) 
 
 parser.add_argument('--entropy_coeff',type=float,default=1.) 
 parser.add_argument('--max_episode_steps',type=int,default=500) 

@@ -99,19 +99,19 @@ def test_evaluation(anc_agent,anc_critic_params,
 
 def merge(x,y):
 
-    return jax.tree_map(lambda x,y : jnp.vstack([x,y]),x,y)
+    return jax.tree.map(lambda x,y : jnp.vstack([x,y]),x,y)
 
 def flatten_rollouts(policy_rollouts):
     
     n_policies = len(policy_rollouts)
     merged_rollouts = functools.reduce(merge, policy_rollouts)
-    merged_rollouts = jax.tree_map(lambda x:jnp.stack(jnp.split(x,n_policies,axis=0)),merged_rollouts)
+    merged_rollouts = jax.tree.map(lambda x:jnp.stack(jnp.split(x,n_policies,axis=0)),merged_rollouts)
     
     def reshape_tree(tree, reference_tree,n_policies):
         def reshape_fn(x, reference_x):
             return jnp.reshape(x, (n_policies,*reference_x.shape))
         
-        return jax.tree_map(reshape_fn, tree, reference_tree)
+        return jax.tree.map(reshape_fn, tree, reference_tree)
     
     merged_rollouts = reshape_tree(merged_rollouts,policy_rollouts[0],n_policies)
     
@@ -126,8 +126,8 @@ def split_rollouts(flattened_rollouts,MAX_SIZE):
     idxs = jax.random.choice(key,a=max, shape=(size,), replace=False)   
     train_idxs = idxs[:int(0.8*size)]
     test_idxs = idxs[int(0.8*size):]
-    train_rollouts = jax.tree_map(lambda x : x[train_idxs],flattened_rollouts)
-    test_rollouts = jax.tree_map(lambda x : x[test_idxs],flattened_rollouts)
+    train_rollouts = jax.tree.map(lambda x : x[train_idxs],flattened_rollouts)
+    test_rollouts = jax.tree.map(lambda x : x[test_idxs],flattened_rollouts)
     
     return train_rollouts,test_rollouts
 

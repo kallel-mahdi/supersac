@@ -16,6 +16,7 @@ from jaxrl_m.typing import *
 
 import flax.linen as nn
 import jax.numpy as jnp
+import jax
 
 import distrax
 import flax.linen as nn
@@ -32,29 +33,20 @@ def default_init(scale: Optional[float] = jnp.sqrt(2.0)):
 
     return nn.initializers.orthogonal(scale)
 
-# def default_init(scale: Optional[float] = 1.0):
-#     return nn.initializers.variance_scaling(scale, "fan_avg", "uniform")
-
-
-
-
 
 class MLP(nn.Module):
     hidden_dims: Sequence[int]
     activations: Callable[[jnp.ndarray], jnp.ndarray] = nn.tanh
     activate_final: bool = False
     use_layer_norm: bool = False
-    scale_final: Optional[float] = None
+    
 
     @nn.compact
     def __call__(self, x: jnp.ndarray,train=False) -> jnp.ndarray:
 
         for i, size in enumerate(self.hidden_dims):
-            if i + 1 == len(self.hidden_dims) and self.scale_final is not None:
-                x = nn.Dense(size,
-                             kernel_init=default_init())(x)
-            else:
-                x = nn.Dense(size, kernel_init=default_init())(x)
+            
+            x = nn.Dense(size, kernel_init=default_init())(x)
 
             if i + 1 < len(self.hidden_dims) or self.activate_final:
                 if self.use_layer_norm:
@@ -91,10 +83,14 @@ class OriginalCritic(nn.Module):
     def __call__(self, observations: jnp.ndarray, actions: jnp.ndarray,
                 *args,**kwargs) -> jnp.ndarray:
         inputs = jnp.concatenate([observations, actions], -1)
-        critic = MLP((*self.hidden_dims,2),
+        intermediate = MLP(self.hidden_dims,activate_final=True,
                      use_layer_norm=self.use_layer_norm)(inputs,*args, **kwargs)
         
-        return critic[:,0]
+        self.sow('intermediates', 'features', intermediate)
+        Q = nn.Dense(1, kernel_init=default_init())(intermediate)
+        
+        return jnp.squeeze(Q, -1)
+    
 
 
 def ensemblize(cls, num_qs, out_axes=0, **kwargs):

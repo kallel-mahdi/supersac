@@ -57,18 +57,17 @@ class SACAgent(flax.struct.PyTreeNode):
                         ### Add entropy
                         target_q = target_q - agent.config['discount'] * batch['masks'] * next_log_probs * agent.temp()
                         target_q = jax.lax.stop_gradient(target_q)
-                        target_q1,target_q2 = target_q
+                        
                         
                         if agent.config['min_target']:
-                            target_q1 = jnp.minimum(target_q1, target_q2)
-                            target_q2 = target_q1
-                        
-                        q1,q2 = agent.critic(batch['observations'], batch['actions'],params=critic_params)
-                        critic_loss = ((q1 - target_q1)**2 + (q2 - target_q2)**2).mean()
+                            target_q = jnp.min(target_q,axis=0) ### The change of shape should not pose problem
+                           
+                        q = agent.critic(batch['observations'], batch['actions'],params=critic_params)
+                        critic_loss = ((q-target_q)**2).mean()
                         
                         return critic_loss, {
                         'critic_loss': critic_loss,
-                        'q1': q1.mean(),
+                        'q1': q.mean(),
                     }  
                 
                 new_critic, critic_info = critic.apply_loss_fn(loss_fn=critic_loss_fn, has_aux=True)
@@ -271,7 +270,7 @@ def create_learner(
         actor_def = Policy(actor_hidden_dims, action_dim=action_dim,use_bias=use_bias,
             state_dependent_std=state_dependent_std, tanh_squash_distribution=tanh_squash_distribution,use_layer_norm=use_layer_norm)
 
-        critic_def = ensemblize(OriginalCritic, 2)(hidden_dims=critic_hidden_dims)
+        critic_def = ensemblize(OriginalCritic,num_critics)(hidden_dims=critic_hidden_dims)
         critic_params = critic_def.init(critic_key, observations, actions)['params']
         critic = TrainState.create(critic_def, critic_params, tx=optax.adam(learning_rate=critic_lr))
 

@@ -80,11 +80,39 @@ class SACAgent(flax.struct.PyTreeNode):
         
         return agent
     
-    @jax.jit
+    #@jax.jit
     def update_critics_seq(agent,batches,R2):
-       
+        
+        
+        # if agent.config['num_critics']>1 and agent.config["adaptive_critics"]:
+     
+            
+        #     # worst = jnp.argmin(R2)
+        #     # params = OriginalCritic((256,256)).init(critic_key, agent.config["observations"], agent.config["actions"])['params']
+        #     # f = lambda x,param : x.at[worst].set(param)
+        #     # new_critic_params = jax.tree.map(f,agent.critic.params,params)
+        #     # new_opt_state = jax.vmap(agent.critic.tx.init)(new_critic_params)
+        #     # new_critics = agent.critic.replace(params=new_critic_params,opt_state=new_opt_state)
+        #     # agent = agent.replace(critic=new_critics)
+            
+            
+        #     critic = OriginalCritic((256,256))
+        #     reset = lambda rng,params : critic.init(rng,
+        #                                             agent.config["observations"], agent.config["actions"],False)["params"]
+        #     no_reset = lambda rng,params: params
+        #     f = lambda  mask,rng,params :lax.cond(mask,reset,no_reset,rng,params)
+        #     mask = jnp.zeros(( agent.config["num_critics"],))
+        #     mask = mask.at[jnp.argmin(R2)].set(1)
+        #     rngs = jax.random.split(agent.rng, agent.config["num_critics"])
+        #     new_params = jax.vmap(f,in_axes=(0,0,0))(mask,rngs,agent.critic.params)
+        #     new_opt_state = agent.critic.tx.init(new_params)
+        #     new_critic = agent.critic.replace(params=new_params,opt_state=new_opt_state)
+        #     agent = agent.replace(critic=new_critic)
+            
+        #     print(np.array(R2),print(np.array(mask)))
     
         ### Train critic 
+        
         size = batches["observations"].shape[0]
         agent,batches = jax.lax.fori_loop(0,size,body,(agent,batches))
         
@@ -156,8 +184,8 @@ class SACAgent(flax.struct.PyTreeNode):
         
         new_rng, curr_key, next_key = jax.random.split(agent.rng, 3)
 
-        # R2 = R2.reshape(-1,1)
-        # R2 = jax.nn.softmax(R2,axis=0)
+        R2 = R2.reshape(-1,1)
+        R2 = jax.nn.softmax(R2,axis=0)
 
         observations = batch["observations"]
         
@@ -172,7 +200,8 @@ class SACAgent(flax.struct.PyTreeNode):
             curr_key,_ = jax.random.split(curr_key)
             actions, log_p,_ = agent.sample_actions(observations,seed=curr_key)
             q_all = agent.critic(observations,actions)
-            q = jnp.mean(q_all,axis=0)
+            #q = jnp.mean(q_all,axis=0)
+            q = jnp.sum(R2*q_all,axis=0)
             qs+=q
             logps+=log_p
                     
@@ -181,7 +210,8 @@ class SACAgent(flax.struct.PyTreeNode):
         
         ### Compute advantage for the fixed states AND actions
         q_all = agent.critic(batch["observations"],batch["actions"])
-        q = jnp.mean(q_all,axis=0)
+        #q = jnp.mean(q_all,axis=0)
+        q = jnp.sum(R2*q_all,axis=0)
         adv = q-v + agent.temp()*(-batch["log_probs"]+h)### This one worked
         
         for i in range(agent.config["num_actor_updates"]):

@@ -29,9 +29,14 @@ import jax.numpy as jnp
 ###############################
 
 
+###FOR TANH
 def default_init(scale: Optional[float] = jnp.sqrt(2.0)):
 
     return nn.initializers.orthogonal(scale)
+
+
+# def default_init(scale: Optional[float] = 1.0):
+#     return nn.initializers.variance_scaling(scale, "fan_avg", "uniform")
 
 
 class MLP(nn.Module):
@@ -145,7 +150,7 @@ class Policy(nn.Module):
                 self.action_dim, kernel_init=default_init(self.final_fc_init_scale),use_bias=self.use_bias,name="log_stds"
             )(outputs)
         else:
-            log_stds = self.param("log_stds", nn.initializers.zeros, (self.action_dim,))
+            log_stds = self.param("log_stds", jax.nn.initializers.constant(-4.6), (self.action_dim,))
 
         log_stds = jnp.clip(log_stds, self.log_std_min, self.log_std_max)
 

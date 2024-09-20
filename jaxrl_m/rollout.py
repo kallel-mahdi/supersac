@@ -165,8 +165,11 @@ def rollout_policy2(agent,env,exploration_rng,
             rewards=reward,masks=mask,next_observations=next_obs,discounts=disc,
             log_probs=log_p,pre_actions=pre_action)
 
-        replay_buffer.add_transition(transition)
-        actor_buffer.add_transition(transition)
+        if replay_buffer is not None:
+            replay_buffer.add_transition(transition)
+        
+        if actor_buffer is not None:
+            actor_buffer.add_transition(transition)
     
         observations[n_steps] = obs
         disc_masks[n_steps] = disc
@@ -186,22 +189,27 @@ def rollout_policy2(agent,env,exploration_rng,
             n_rollouts += 1
             episode_step = 0
             disc,mask = 1.,1.
+            last_step = n_steps
             
 
     policy_returns = np.array(policy_returns)
     policy_return = policy_returns.mean()
     variance = policy_returns.var()
     undisc_return = np.array(undisc_returns).mean()
-   
     
-    #policy_rollout = None
+    observations = observations[:last_step] 
+    observations = jnp.pad(observations, ((0, max_steps - last_step),) + ((0, 0),) * (observations.ndim - 1))
+    disc_masks = disc_masks[:last_step] 
+    disc_masks = jnp.pad(disc_masks, ((0, max_steps - last_step),) + ((0, 0),) * (disc_masks.ndim - 1))
+    
+    
     
     policy_rollout = PolicyRollout( policy_params=agent.actor.params,
                                     policy_return=policy_return,
                                     variance=variance,
                                     observations=observations,
                                     disc_masks=disc_masks,
-                                    num_rollouts=jnp.array(num_rollouts))
+                                    num_rollouts=jnp.array(n_rollouts))
     
     return replay_buffer,actor_buffer,policy_rollout,policy_return,variance,undisc_return,n_steps
 
@@ -230,8 +238,6 @@ def rollout_policy_lqr(agent,env,exploration_rng,
             exploration_rng, key = jax.random.split(exploration_rng)
             action,log_p,pre_action = agent.sample_actions(obs,seed=exploration_rng)
             
-            
-        
         #next_obs, reward, done, truncated, info = env.step(action)
         next_obs, reward, done, info = env.step(action)
         

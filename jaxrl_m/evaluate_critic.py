@@ -4,24 +4,30 @@ import jax
 import jax.numpy as jnp
 from functools import partial
 import jax.tree_util
-
+from jaxrl_m.networks import OriginalCritic
 
 def f(anc_agent,obs,actor_params,critic_params,seed):
 
-    dist = anc_agent.actor(obs, params=actor_params)
-    actions, _ = dist.sample_and_log_prob(seed=seed)
-    #q,_ = anc_agent.critic(obs, actions,params=critic_params)
-    q = anc_agent.critic(obs, actions,params=critic_params)
+
+    params = {'params':critic_params}
+    #actions, log_p,_ = anc_agent.sample_actions(obs,seed=seed)
+    
+    
+    #q = anc_agent.critic(obs, actions,params=critic_params)
+    
+    dist = anc_agent.actor(obs,params=actor_params)
+    pre_actions,_ = dist.sample_and_log_prob(seed=seed)
+
+    if anc_agent.config["tanh_squash_actions"]:
+        actions = jax.nn.tanh(pre_actions)
+
+    else : 
+        actions = pre_actions
+    
+    q = OriginalCritic(hidden_dims=(256,256)).apply(params,obs, actions)
    
     return q
 
-# def f(anc_agent,obs,actor_params,critic_params,seed):
-
-#     dist = anc_agent.actor(obs, params=actor_params)
-#     actions, _ = dist.sample_and_log_prob(seed=seed)
-#     q1,q2 = anc_agent.critic(obs, actions,params=critic_params)
-#     q = jnp.mean(jnp.stack([q1,q2]),axis=0)
-#     return q
     
 @jax.jit
 def estimate_return(acq_rollout,
@@ -41,28 +47,6 @@ def estimate_return(acq_rollout,
     acq_return_pred = anc_return + adv
     
     return acq_return_pred,acq_return
-
-
-
-# def estimate_sequential(anc_agent, anc_return, policy_rollouts):
-    
-#     seed = jax.random.PRNGKey(0)
-#     anc_critic_params = anc_agent.critic.params
-    
-    
-#     estimate = partial(estimate_return,anc_agent,anc_critic_params,anc_return,seed)
-    
-#     predict_many_critics = jax.vmap(estimate_return, in_axes=(None,None,0,None,None))
-    
-    
-    
-#     policy_rollout = jax.tree.map(lambda x: x[i], policy_rollouts)
-    
-#     critics_prediction = predict_many_critics()
-#     predictions = running_result.at[i].set(v)
-#     return (i+1,running_result),None
-
-
 
 
 
@@ -111,24 +95,3 @@ def evaluate_many_critics(anc_agent, anc_return, policy_rollouts,num_critics):
     #R2, bias = jax.vmap(tmp)(anc_critic_params)
     
     return R2, bias
-
-# def evaluate_many_critics(anc_agent, anc_return, policy_rollouts,num_critics):
-    
-#     seed = anc_agent.rng
-#     anc_critic_params = anc_agent.critic.params
-#     num_critics = 5 ###HOTFIX
-#     tmp = partial(evaluate_one_critic,
-#                 anc_agent=anc_agent,
-#                 anc_return=anc_return,
-#                 policy_rollouts=policy_rollouts, seed=seed)
-
-#     ### Evaluating over all critics causes O.O.M error
-#     ### We do it sequentially as it's not a bottleneck
-#     R2_l, bias_l = [], []
-    
-#     critic_params =anc_agent.critic.params
-#     R2, bias = tmp(critic_params)
-#     R2_l.append(R2)
-#     bias_l.append(bias)
-    
-#     return R2, bias

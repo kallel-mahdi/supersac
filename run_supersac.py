@@ -27,19 +27,19 @@ parser.add_argument('--seed',type=int,default=42)
 parser.add_argument('--algo_name', type=str, default='superppo', help='the name of the RL algorithm')
 parser.add_argument('--project_name',type=str,default="single_exp") 
 
-parser.add_argument('--env_name',type=str,default="Ant-v5") 
-parser.add_argument('--max_steps',type=int,default=2_000_000) 
+parser.add_argument('--env_name',type=str,default="Hopper-v5") 
+parser.add_argument('--max_steps',type=int,default=1_000_000) 
 parser.add_argument('--max_episode_steps',type=int,default=1000) 
 parser.add_argument('--num_rollouts',type=int,default=4) 
 parser.add_argument('--gamma',type=float,default=0.995)
-parser.add_argument('--healthy_reward',type=float,default=0.75) 
+parser.add_argument('--healthy_reward',type=float,default=0.5) 
 parser.add_argument('--entropy_coeff',type=float,default=1.) 
 
 parser.add_argument('--discount_actor',type=str2bool,default=True)
 parser.add_argument('--min_target',type=str2bool,default=False)
 parser.add_argument('--discount_entropy',type=str2bool,default=False) 
 parser.add_argument('--on_policy_data',type=str2bool,default=False)
-parser.add_argument('--adaptive_critics',type=str2bool,default=False) 
+parser.add_argument('--adaptive_critics',type=str2bool,default=True) 
 parser.add_argument('--num_critics',type=int,default=4)
 
 parser.add_argument('--critic_lr',type=float,default=3e-4) 
@@ -48,8 +48,8 @@ parser.add_argument('--temp_lr',type=float,default=3e-4)
 parser.add_argument('--use_layer_norm',type=str2bool,default=True)
 
 parser.add_argument('--momentum',type=float,default=0.) 
-parser.add_argument('--num_actor_updates',type=int,default=5) 
-parser.add_argument('--clipping_ratio',type=float,default=0.1) 
+parser.add_argument('--num_actor_updates',type=int,default=10) 
+parser.add_argument('--clipping_ratio',type=float,default=0.05) 
 parser.add_argument('--hidden_dims',type=int,default=256) 
 parser.add_argument('--episode_based',type=str2bool,default=False) 
 
@@ -148,12 +148,10 @@ def train(args):
     unlogged_steps,cached_steps = 0,0
     policy_rollouts = deque([], maxlen=20)
     
-    R2,bias = jnp.ones(args.num_critics),jnp.zeros(args.num_critics)
+    R2,bias = jnp.ones(args.num_critics)/args.num_critics,jnp.zeros(args.num_critics)
     
     rollout_fn = rollout_policy if args.episode_based else rollout_policy2
         
-
-    
     with tqdm.tqdm(total=max_steps) as pbar:
         
         while (i < max_steps):
@@ -184,10 +182,26 @@ def train(args):
                 ### Update actor ###
                 actor_batch = actor_buffer.get_all()    
                 
-                if len(policy_rollouts)>=10 and args.adaptive_critics:
+                if len(policy_rollouts)>=2 and args.adaptive_critics:
+                    
+                    
+                    mask = jnp.zeros(( agent.config["num_critics"],))
+                    mask = mask.at[0].set(1)
+                    rngs = jax.random.split(agent.rng, agent.config["num_critics"])
+                    critic = OriginalCritic((256,256))
+                    reset = lambda rng,params : critic.init(rng,
+                                                    agent.config["observations"], agent.config["actions"],False)["params"]
+                    no_reset = lambda rng,params: params
+            
+                    f = lambda  mask,rng,params :lax.cond(mask,reset,no_reset,rng,params)
+                    new_params = jax.vmap(f,in_axes=(0,0,0))(mask,rngs,agent.critic.params)
+                    new_opt_state = agent.critic.tx.init(new_params)
+                    new_critic = agent.critic.replace(params=new_params,opt_state=new_opt_state)
+                    agent = agent.replace(critic=new_critic)
                     
                     flattened_rollouts = flatten_rollouts(policy_rollouts)
                     R2,bias = evaluate_many_critics(agent,policy_rollout.policy_return,flattened_rollouts,args.num_critics)
+                    
                     R2_train_info = {'R2/max': jnp.max(R2),'R2/bias': bias[jnp.argmax(R2)],
                                     "R2/histogram": wandb.Histogram(jnp.clip(R2,a_min=-1,a_max=1)),
                                     }

@@ -21,8 +21,8 @@ def body(i,val):
 
 class Temperature(nn.Module):
     
-    #initial_temperature: float = -3.912 ## (log(0.02))
-    initial_temperature: float = -4.6 ## (log(0.02))
+    initial_temperature: float = -3.912 ## (log(0.02))
+    #initial_temperature: float = -4.6 ## (log(0.02))
     
     
     @nn.compact
@@ -213,7 +213,7 @@ class SACAgent(flax.struct.PyTreeNode):
         q_all = agent.critic(batch["observations"],batch["actions"])
         #q = jnp.mean(q_all,axis=0)
         q = jnp.sum(R2*q_all,axis=0)
-        adv = q-v + agent.temp()*(-batch["log_probs"]+h)### This one worked
+        adv = q-v + agent.temp()*(-batch["log_probs"]-h)### This one worked
         
         for i in range(agent.config["num_actor_updates"]):
             

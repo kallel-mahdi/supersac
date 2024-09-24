@@ -41,7 +41,7 @@ for cfg in configs :
 
     command = f'sbatch job_file_ppo.sh\
     --seed  {cfg[0]} --env_name {cfg[1]} --project_name {cfg[2]} \
-    --gamma {cfg[3]} --max_steps {cfg[4]} --normalize_reward {cfg[5]} --full_batch{cfg[6]} --gae_lambda {cfg[7]}\
+    --gamma {cfg[3]} --max_steps {cfg[4]} --normalize_reward {cfg[5]} --full_batch {cfg[6]} --gae_lambda {cfg[7]}\
     >./null 2>&1 & '
     
     print(command)

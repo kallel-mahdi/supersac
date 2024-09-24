@@ -24,7 +24,6 @@ class Temperature(nn.Module):
     initial_temperature: float = -3. ## (log(0.02))
     #initial_temperature: float = -9.2 ## (log(0.02))
     
-    
     @nn.compact
     def __call__(self) -> jnp.ndarray:
         log_temp = self.param('log_temp',

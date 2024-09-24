@@ -48,12 +48,12 @@ parser.add_argument('--seed',type=int,default=42)
 parser.add_argument('--algo_name', type=str, default='superppo', help='the name of the RL algorithm')
 parser.add_argument('--project_name',type=str,default="single_exp") 
 
-parser.add_argument('--env_name',type=str,default="InvertedDoublePendulum-v5") 
+parser.add_argument('--env_name',type=str,default="Hopper-v5") 
 parser.add_argument('--max_steps',type=int,default=1_000_000) 
 parser.add_argument('--max_episode_steps',type=int,default=1000) 
-parser.add_argument('--num_rollouts',type=int,default=4) 
+parser.add_argument('--num_rollouts',type=int,default=5) 
 parser.add_argument('--gamma',type=float,default=0.995)
-parser.add_argument('--healthy_reward',type=float,default=1.) 
+parser.add_argument('--healthy_reward',type=float,default=0.75) 
 parser.add_argument('--entropy_coeff',type=float,default=1.) 
 
 parser.add_argument('--discount_actor',type=str2bool,default=True)
@@ -61,7 +61,7 @@ parser.add_argument('--discount_entropy',type=str2bool,default=True)
 parser.add_argument('--on_policy_data',type=str2bool,default=False)
 parser.add_argument('--adaptive_critics',type=str2bool,default=False) 
 parser.add_argument('--min_target',type=str2bool,default=False)
-parser.add_argument('--num_critics',type=int,default=5)
+parser.add_argument('--num_critics',type=int,default=2)
 
 parser.add_argument('--critic_lr',type=float,default=3e-4) 
 parser.add_argument('--actor_lr',type=float,default=3e-4) 
@@ -117,7 +117,8 @@ def train(args):
         discounts=1.0,
         log_probs=0.,
     )
-    buffer_size = args.num_rollouts*args.max_episode_steps if args.on_policy_data else 100_000
+
+    buffer_size = args.num_rollouts*args.max_episode_steps if args.on_policy_data else 20_000
     replay_buffer = ReplayBuffer.create(example_transition, size=int(buffer_size))
     actor_buffer = ActorReplayBuffer.create(example_transition, size=int(args.num_rollouts*args.max_episode_steps))
 

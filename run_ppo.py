@@ -81,6 +81,7 @@ parser.add_argument('--num_steps', type=int, default=2048, help='the number of s
 
 parser.add_argument('--anneal_lr', default=True,action='store_true', help='Toggle learning rate annealing for policy and value networks')
 parser.add_argument('--normalize_reward',type=str2bool, default=True)
+parser.add_argument('--full_batch',type=str2bool, default=True)
 parser.add_argument('--gamma', type=float, default=0.99, help='the discount factor gamma')
 parser.add_argument('--gae_lambda', type=float, default=0.95, help='the lambda for the general advantage estimation')
 parser.add_argument('--num_minibatches', type=int, default=32, help='the number of mini-batches')
@@ -98,6 +99,8 @@ args.minibatch_size = int(args.batch_size // args.num_minibatches)
 args.num_iterations = args.max_steps // args.batch_size
 
 args = parser.parse_args()
+
+print(args.full_batch)
 
 
 
@@ -289,7 +292,9 @@ if __name__ == "__main__":
             np.random.shuffle(b_inds)
             for start in range(0, args.batch_size, args.minibatch_size):
                 end = start + args.minibatch_size
-                mb_inds = b_inds[start:end]
+
+                if args.full_batch : mb_inds = b_inds
+                else : mb_inds = b_inds[start:end]
 
                 _, newlogprob, entropy, newvalue = agent.get_action_and_value(b_obs[mb_inds], b_actions[mb_inds])
                 logratio = newlogprob - b_logprobs[mb_inds]

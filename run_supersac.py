@@ -25,8 +25,8 @@ from jaxrl_m.evaluation import (EpisodeMonitor, evaluate, flatten,
 from jaxrl_m.rollout import (rollout_policy, rollout_policy2)
 from jaxrl_m.utils import flatten_rollouts
 from jaxrl_m.wandb import default_wandb_config, get_flag_dict, setup_wandb
-from jaxrl_m.onsac_clean2 import *
-from jaxrl_m.evaluate_critic2 import *
+from jaxrl_m.onsac_clean import *
+from jaxrl_m.evaluate_critic import *
 from jaxrl_m.utils import *
 from jaxrl_m.normalize import *
 
@@ -47,13 +47,13 @@ parser.add_argument('--seed',type=int,default=42)
 parser.add_argument('--algo_name', type=str, default='superppo', help='the name of the RL algorithm')
 parser.add_argument('--project_name',type=str,default="single_exp") 
 
-parser.add_argument('--env_name',type=str,default="Hopper-v5") 
+parser.add_argument('--env_name',type=str,default="Walker2d-v5") 
 parser.add_argument('--max_steps',type=int,default=1_000_000) 
 parser.add_argument('--max_episode_steps',type=int,default=1000) 
 parser.add_argument('--num_rollouts',type=int,default=5) 
 parser.add_argument('--gamma',type=float,default=0.995)
 parser.add_argument('--healthy_reward',type=float,default=0.5) 
-parser.add_argument('--entropy_coeff',type=float,default=1.) 
+parser.add_argument('--entropy_coeff',type=float,default=0.5) 
 
 parser.add_argument('--num_critics',type=int,default=2)
 parser.add_argument('--discount_actor',type=str2bool,default=True)
@@ -62,14 +62,13 @@ parser.add_argument('--on_policy_data',type=str2bool,default=False)
 parser.add_argument('--adaptive_critics',type=str2bool,default=False) 
 parser.add_argument('--min_target',type=str2bool,default=False)
 
-
 parser.add_argument('--critic_lr',type=float,default=3e-4) 
 parser.add_argument('--actor_lr',type=float,default=3e-4) 
-parser.add_argument('--temp_lr',type=float,default=3e-4)
+parser.add_argument('--temp_lr',type=float,default=3e-3)
 parser.add_argument('--use_layer_norm',type=str2bool,default=True)
 
 parser.add_argument('--momentum',type=float,default=0.) 
-parser.add_argument('--num_actor_updates',type=int,default=10) 
+parser.add_argument('--num_actor_updates',type=int,default=5) 
 parser.add_argument('--clipping_ratio',type=float,default=0.1) 
 parser.add_argument('--hidden_dims',type=int,default=256) 
 parser.add_argument('--episode_based',type=str2bool,default=False) 
@@ -118,7 +117,7 @@ def train(args):
         log_probs=0.,
     )
 
-    buffer_size = args.num_rollouts*args.max_episode_steps if args.on_policy_data else 20_000
+    buffer_size = args.num_rollouts*args.max_episode_steps if args.on_policy_data else 10*args.num_rollouts*args.max_episode_steps
     replay_buffer = ReplayBuffer.create(example_transition, size=int(buffer_size))
     actor_buffer = ActorReplayBuffer.create(example_transition, size=int(args.num_rollouts*args.max_episode_steps))
 
@@ -187,7 +186,7 @@ def train(args):
                 ### Update actor ###
                 actor_batch = actor_buffer.get_all()    
                 
-                if len(policy_rollouts)>=20 and args.adaptive_critics:
+                if len(policy_rollouts)>=10 and args.adaptive_critics:
                     
                     print('bingo')
                     flattened_rollouts = flatten_rollouts(policy_rollouts)

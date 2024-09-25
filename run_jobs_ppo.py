@@ -21,7 +21,7 @@ parser.add_argument('--project_name',type=str,default="iclr_ppo_diagnosis")
 parser.add_argument('--gamma',type=float,default=0.99)
 parser.add_argument('--max_steps',type=int,default=1_000_000) 
 parser.add_argument('--normalize_reward',type=bool,default=True) 
-parser.add_argument('--full_batch',type=str2bool, default=True)
+parser.add_argument('--full_batch',type=str2bool, default=False)
 parser.add_argument('--gae_lambda', type=float, default=0.95, help='the lambda for the general advantage estimation')
 args = parser.parse_args()
 ##############################

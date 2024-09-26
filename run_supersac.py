@@ -64,14 +64,14 @@ parser.add_argument('--min_target',type=str2bool,default=False)
 
 parser.add_argument('--critic_lr',type=float,default=3e-4) 
 parser.add_argument('--actor_lr',type=float,default=3e-4) 
-parser.add_argument('--temp_lr',type=float,default=3e-3)
+parser.add_argument('--temperature',type=float,default=0.05)
 parser.add_argument('--use_layer_norm',type=str2bool,default=True)
 
 parser.add_argument('--momentum',type=float,default=0.) 
 parser.add_argument('--num_actor_updates',type=int,default=5) 
 parser.add_argument('--clipping_ratio',type=float,default=0.1) 
 parser.add_argument('--hidden_dims',type=int,default=256) 
-parser.add_argument('--episode_based',type=str2bool,default=False) 
+parser.add_argument('--episode_based',type=str2bool,default=True) 
 
 args = parser.parse_args()
 print(args)
@@ -133,7 +133,7 @@ def train(args):
                     adaptive_critics=args.adaptive_critics,
                     num_critics= args.num_critics,
                     entropy_coeff=args.entropy_coeff,
-                    temp_lr=args.temp_lr,
+                    temperature=args.temperature,
                     actor_lr=args.actor_lr,
                     critic_lr=args.critic_lr,
                     momentum=args.momentum,

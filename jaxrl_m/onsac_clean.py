@@ -21,15 +21,14 @@ def body(i,val):
 
 class Temperature(nn.Module):
     
-    initial_temperature: float = -3. ## (log(0.02))
-    #initial_temperature: float = -9.2 ## (log(0.02))
+    initial_temperature: float
     
     @nn.compact
     def __call__(self) -> jnp.ndarray:
-        log_temp = self.param('log_temp',
+        temp = self.param('temp',
                               init_fn=lambda key: jnp.full(
                                   (), self.initial_temperature))
-        return jnp.exp(log_temp)
+        return temp
 
 
 class SACAgent(flax.struct.PyTreeNode):
@@ -122,16 +121,7 @@ class SACAgent(flax.struct.PyTreeNode):
     @jax.jit
     def update_actor(agent, batch: Batch,R2):
        
-        def temp_loss_fn(temp_params, entropy, target_entropy):
-            temperature = agent.temp(params=temp_params)
-            entropy_diff = entropy-target_entropy
-            temp_loss = (temperature * entropy_diff).mean()
-            return temp_loss, {
-                'temp_loss': temp_loss,
-                'temperature': temperature,
-                'entropy_diff': entropy_diff,
-            }
-        
+      
         def actor_loss_fn(
                 actor_params,
                 adv,
@@ -219,13 +209,9 @@ class SACAgent(flax.struct.PyTreeNode):
         for i in range(agent.config["num_actor_updates"]):
             
             new_actor, actor_info = agent.actor.apply_loss_fn(actor_loss_fn,True,adv)
-            new_temp, temp_info = agent.temp.apply_loss_fn(temp_loss_fn,True,actor_info['entropy'], agent.config['target_entropy'])
-            agent = agent.replace(rng=new_rng, actor=new_actor,temp=new_temp)
+            agent = agent.replace(rng=new_rng, actor=new_actor)
             
-        
-        
-        
-        return agent, {**actor_info,**temp_info,"grads":grads}
+        return agent, {**actor_info,"temperature":agent.temp(),"grads":grads}
 
 
 
@@ -233,13 +219,8 @@ class SACAgent(flax.struct.PyTreeNode):
     def update_actor_sac(agent, batch: Batch,R2):
         new_rng, curr_key, next_key = jax.random.split(agent.rng, 3)
 
-        
-
         def actor_loss_fn(actor_params):
             
-            # dist = agent.actor(batch['observations'], params=actor_params)
-
-            # pre_actions,pre_log_ps = dist.sample_and_log_prob(seed=new_rng)
             
             actions,log_ps,_ = agent.sample_actions(batch["observations"],params=actor_params,seed=new_rng)
 
@@ -312,7 +293,7 @@ def create_learner(
                 momentum,
                 actor_lr,
                 critic_lr,
-                temp_lr,
+                temperature,
                 num_actor_updates,
                 clipping_ratio,
                 actor_hidden_dims: Sequence[int],
@@ -340,14 +321,14 @@ def create_learner(
         critic = TrainState.create(critic_def, critic_params, tx=optax.adam(learning_rate=critic_lr))
 
         actor_params = actor_def.init(actor_key, observations)['params']
-        temp_def = Temperature()
+        temp_def = Temperature(temperature)
         temp_params = temp_def.init(rng)['params']
         
         tx = optax.chain(
-            optax.clip_by_global_norm(0.5),
+            optax.clip_by_global_norm(0.5), ## This is necessary to avoid exploding gradients due to numerical instabilities.
             optax.adam(learning_rate=actor_lr,b1=momentum),
         )
-        temp = TrainState.create(temp_def, temp_params, tx=optax.adam(learning_rate=temp_lr,b1=momentum))
+        temp = TrainState.create(temp_def, temp_params, tx=optax.adam(learning_rate=3e-9,b1=momentum)) ##placeholder
         actor = TrainState.create(actor_def, actor_params, tx=tx)
             
         if target_entropy is None:

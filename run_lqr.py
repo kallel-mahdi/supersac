@@ -94,7 +94,7 @@ parser.add_argument('--env_name',type=str,default="Hopper-v5")
 parser.add_argument('--max_steps',type=int,default=1000_000) 
 parser.add_argument('--max_episode_steps',type=int,default=500) 
 parser.add_argument('--num_rollouts',type=int,default=5) 
-parser.add_argument('--gamma',type=float,default=0.995)
+parser.add_argument('--gamma',type=float,default=0.99)
 parser.add_argument('--healthy_reward',type=float,default=1.) 
 parser.add_argument('--entropy_coeff',type=float,default=1.) 
 
@@ -121,7 +121,7 @@ parser.add_argument('--state_dim',type=int,default=4)
 parser.add_argument('--a_dim',type=int,default=2) 
 
 
-args = parser.parse_args(args=[])
+args = parser.parse_args()
 
 
 env = LQR.generate(s_dim=args.state_dim,a_dim=args.a_dim,gamma=args.gamma,episodic=True,horizon=args.max_episode_steps,random_init=True)
@@ -222,10 +222,13 @@ args_dict = {
 }
 
 args_dict_min = copy.deepcopy(args_dict)
+args_dict_no = copy.deepcopy(args_dict)
 args_dict_min["min_target"]=True
+args_dict_no["discount_actor"]=False
 agent = create_learner(**args_dict)
 agent = agent.replace(config=unfreeze(agent.config))
 agent_on = create_learner(**args_dict)
+agent_no = create_learner(**args_dict_no)
 agent_min = create_learner(**args_dict_min)
 
 ##############

@@ -50,7 +50,6 @@ import jax
 import jax.numpy as jnp
 from jaxrl_m.common import CodeTimer
 import logging
-import envpool
 from flax.core.frozen_dict import unfreeze
 logging.basicConfig(level=logging.CRITICAL)
 
@@ -89,11 +88,11 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--seed',type=int,default=42) 
 
 parser.add_argument('--algo_name', type=str, default='superppo', help='the name of the RL algorithm')
-parser.add_argument('--project_name',type=str,default="gradient_exps") 
+parser.add_argument('--project_name',type=str,default="gradient_exps_99") 
 
 parser.add_argument('--env_name',type=str,default="Hopper-v5") 
 parser.add_argument('--max_steps',type=int,default=1000_000) 
-parser.add_argument('--max_episode_steps',type=int,default=1000) 
+parser.add_argument('--max_episode_steps',type=int,default=500) 
 parser.add_argument('--num_rollouts',type=int,default=5) 
 parser.add_argument('--gamma',type=float,default=0.995)
 parser.add_argument('--healthy_reward',type=float,default=1.) 
@@ -125,13 +124,13 @@ parser.add_argument('--a_dim',type=int,default=2)
 args = parser.parse_args(args=[])
 
 
-env = LQR.generate(s_dim=args.state_dim,a_dim=args.a_dim,gamma=0.995,episodic=True,horizon=1000,random_init=True)
+env = LQR.generate(s_dim=args.state_dim,a_dim=args.a_dim,gamma=args.gamma,episodic=True,horizon=args.max_episode_steps,random_init=True)
 
 
 from jaxrl_m.onsac_clean import *
 
 hidden_dims = ()
-NUM_UPDATES = 1000
+NUM_UPDATES = args.num_rollouts*args.max_episode_steps
 data = []
 
 import os
@@ -288,6 +287,7 @@ with tqdm.tqdm(total=max_steps) as pbar:
                 idxs = jax.random.choice(agent.rng,a=transitions['observations'].shape[0], shape=(NUM_UPDATES,256), replace=True)
                 batches = jax.vmap(lambda i: jax.tree.map(lambda x: x[i], transitions))(idxs)
                 agent_on = agent_on.update_critics_seq(batches,R2)
+                agent_no = agent_no.update_critics_seq(batches,R2)
 
                 
                 a,b=evaluate_critic(agent,test_buffer.get_all())
@@ -296,7 +296,7 @@ with tqdm.tqdm(total=max_steps) as pbar:
                 
 
                 wandb.log({"test/normal_error":a,"test/normal_bias":b,"test/min_error":c,"test/min_bias":d,
-                           "test/on_error":e,"test/on_bias":f})
+                           "test/on_error":e,"test/on_bias":f},step=int(i))
                 
                 
                 a,b=evaluate_critic(agent,actor_buffer.get_all())
@@ -304,7 +304,7 @@ with tqdm.tqdm(total=max_steps) as pbar:
                 e,f=evaluate_critic(agent_on,actor_buffer.get_all())
                 
                 wandb.log({"train/normal_error":a,"train/normal_bias":b,"train/min_error":c,"train/min_bias":d,
-                          "train/on_error":e,"train/on_bias":f})
+                          "train/on_error":e,"train/on_bias":f},step=int(i))
                 
                 
                 
@@ -327,14 +327,9 @@ with tqdm.tqdm(total=max_steps) as pbar:
                 estimate_on = actor_update_info["grads"]["means"]["kernel"]
                 
                 agent.config["discount_actor"]=False
-                _, actor_update_info = agent_on.update_actor(actor_batch,R2)    
+                _, actor_update_info = agent_no.update_actor(actor_batch,R2)    
                 estimate_no = actor_update_info["grads"]["means"]["kernel"]
                 agent.config["discount_actor"]=True
-                
-       
-
-                
-                
                 
                 true_estimate = jnp.dot(true.flatten(),estimate.flatten())/(jnp.linalg.norm(true.flatten())*jnp.linalg.norm(estimate.flatten()))
                 true_min = jnp.dot(true.flatten(),estimate_min.flatten())/(jnp.linalg.norm(true.flatten())*jnp.linalg.norm(estimate_min.flatten()))
@@ -344,7 +339,7 @@ with tqdm.tqdm(total=max_steps) as pbar:
                 
                 rslt = {"train/cosine_true_estimate":true_estimate,"train/cosine_true_min":true_min,"train/cosine_true_on":true_on,
                            "train/cosine_true_no":true_no,"train/cosine_estimate_no":estimate_no}
-                wandb.log(rslt)
+                wandb.log(rslt,step=int(i))
                 print(rslt)
                 
                 critic_update_info = {}
@@ -356,9 +351,7 @@ with tqdm.tqdm(total=max_steps) as pbar:
                 agent_min = agent_min.replace(actor=agent.actor)
                 agent_on = agent_on.replace(actor=agent.actor)
                 
-        
-                             
-                
+
                 ### Log training info ###
                 exploration_metrics = {f'exploration/disc_return': policy_return,'training/std': jnp.sqrt(variance)}
                 train_metrics = {f'training/{k}': v for k, v in update_info.items()}

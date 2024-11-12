@@ -71,7 +71,7 @@ parser.add_argument('--momentum',type=float,default=0.)
 parser.add_argument('--num_actor_updates',type=int,default=5) 
 parser.add_argument('--clipping_ratio',type=float,default=0.1) 
 parser.add_argument('--hidden_dims',type=int,default=256) 
-parser.add_argument('--episode_based',type=str2bool,default=True) 
+parser.add_argument('--episode_based',type=str2bool,default=False) 
 
 args = parser.parse_args()
 print(args)
@@ -179,24 +179,15 @@ def train(args):
                 ### Update critics ###:
                 logging.debug('update critics')
                 transitions = replay_buffer.get_all()
-                idxs = jax.random.choice(agent.rng,a=transitions['observations'].shape[0], shape=(args.num_rollouts*args.max_episode_steps,256), replace=True)
+                n_batches = args.num_rollouts*args.max_episode_steps
+                idxs = jax.random.choice(agent.rng,a=transitions['observations'].shape[0], shape=(n_batches,256), replace=True)
                 batches = jax.vmap(lambda i: jax.tree.map(lambda x: x[i], transitions))(idxs)
                 agent = agent.update_critics_seq(batches,R2)
                         
                 ### Update actor ###
                 actor_batch = actor_buffer.get_all()    
                 
-                if len(policy_rollouts)>=10 and args.adaptive_critics:
-                    
-                    print('bingo')
-                    flattened_rollouts = flatten_rollouts(policy_rollouts)
-                    R2,bias = evaluate_many_critics(agent,policy_rollout.policy_return,flattened_rollouts,args.num_critics)
-                    
-                    R2_train_info = {'R2/max': jnp.max(R2),'R2/bias': bias[jnp.argmax(R2)],
-                                    "R2/histogram": wandb.Histogram(jnp.clip(R2,a_min=-1,a_max=1)),
-                                    }
-                    wandb.log(R2_train_info, step=int(i),commit=False)
-                    
+            
                         
                 #with jax.default_matmul_precision("float32"):
                 agent, actor_update_info = agent.update_actor(actor_batch,R2)    

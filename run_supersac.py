@@ -29,8 +29,11 @@ from jaxrl_m.onsac_clean import *
 from jaxrl_m.evaluate_critic import *
 from jaxrl_m.utils import *
 from jaxrl_m.normalize import *
+from jaxrl_m.dmc import DMCGym
 
-logging.basicConfig(level=logging.CRITICAL)
+#logging.basicConfig(level=logging.CRITICAL)
+logging.basicConfig(level=logging.ERROR)  # Ignore warnings and below (INFO, WARNING, etc.)
+
 #jax.config.update("jax_enable_x64", True)
 jax.config.update('jax_default_matmul_precision', 'float32')
 
@@ -42,18 +45,17 @@ os.environ['TF_CUDNN_DETERMINISTIC'] = '1'
 ##############################
 parser = argparse.ArgumentParser()
 
-parser.add_argument('--seed',type=int,default=42) 
+parser.add_argument('--seed',type=int,default=21) 
 
 parser.add_argument('--algo_name', type=str, default='superppo', help='the name of the RL algorithm')
 parser.add_argument('--project_name',type=str,default="single_exp") 
-
 parser.add_argument('--env_name',type=str,default="Walker2d-v5") 
 parser.add_argument('--max_steps',type=int,default=1_000_000) 
 parser.add_argument('--max_episode_steps',type=int,default=1000) 
 parser.add_argument('--num_rollouts',type=int,default=5) 
 parser.add_argument('--gamma',type=float,default=0.995)
 parser.add_argument('--healthy_reward',type=float,default=0.5) 
-parser.add_argument('--entropy_coeff',type=float,default=0.5) 
+parser.add_argument('--entropy_coeff',type=float,default=1.) 
 
 parser.add_argument('--num_critics',type=int,default=2)
 parser.add_argument('--discount_actor',type=str2bool,default=True)
@@ -67,9 +69,10 @@ parser.add_argument('--actor_lr',type=float,default=3e-4)
 parser.add_argument('--temperature',type=float,default=0.05)
 parser.add_argument('--use_layer_norm',type=str2bool,default=True)
 
-parser.add_argument('--momentum',type=float,default=0.) 
-parser.add_argument('--num_actor_updates',type=int,default=5) 
+parser.add_argument('--momentum',type=float,default=0.9) 
+parser.add_argument('--num_actor_updates',type=int,default=50) 
 parser.add_argument('--clipping_ratio',type=float,default=0.1) 
+parser.add_argument('--gae_lambda',type=float,default=0.5) 
 parser.add_argument('--hidden_dims',type=int,default=256) 
 parser.add_argument('--episode_based',type=str2bool,default=False) 
 
@@ -97,13 +100,16 @@ def train(args):
     wandb_run = setup_wandb(**wandb_config)
     
     ### HalfCheetah does not have healthy_reward argument
-    if 'HalfCheetah' in args.env_name or 'Pendulum' in args.env_name:
+    if any (string in args.env_name for string in ["HalfCheetah","Pendulum","Swimmer"]):
         env = EpisodeMonitor(gym.make(args.env_name, max_episode_steps=args.max_episode_steps))
     else:
         print(f'env_name: {args.env_name}, max_episode_steps: {args.max_episode_steps}, healthy_reward: {args.healthy_reward}')
         env = gym.make(args.env_name, max_episode_steps=args.max_episode_steps, healthy_reward=args.healthy_reward)
     
     eval_env = EpisodeMonitor(gym.make(args.env_name,max_episode_steps=1000))
+    
+    # env = DMCGym("cheetah","run")
+    # eval_env = DMCGym("cheetah","run")
     
 
     example_transition = dict(
@@ -142,6 +148,7 @@ def train(args):
                     actor_hidden_dims=(args.hidden_dims,args.hidden_dims),
                     critic_hidden_dims=(args.hidden_dims,args.hidden_dims),
                     use_layer_norm= args.use_layer_norm,
+                    gae_lambda=args.gae_lambda
                     #**FLAGS.config
                     )
 

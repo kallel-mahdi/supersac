@@ -32,7 +32,7 @@ from jaxrl_m.normalize import *
 from jaxrl_m.dmc import DMCGym
 
 #logging.basicConfig(level=logging.CRITICAL)
-logging.basicConfig(level=logging.ERROR)  # Ignore warnings and below (INFO, WARNING, etc.)
+logging.basicConfig(level=logging.DEBUG)  # Ignore warnings and below (INFO, WARNING, etc.)
 
 #jax.config.update("jax_enable_x64", True)
 jax.config.update('jax_default_matmul_precision', 'float32')
@@ -45,7 +45,7 @@ os.environ['TF_CUDNN_DETERMINISTIC'] = '1'
 ##############################
 parser = argparse.ArgumentParser()
 
-parser.add_argument('--seed',type=int,default=21) 
+parser.add_argument('--seed',type=int,default=42) 
 
 parser.add_argument('--algo_name', type=str, default='superppo', help='the name of the RL algorithm')
 parser.add_argument('--project_name',type=str,default="single_exp") 
@@ -66,12 +66,12 @@ parser.add_argument('--min_target',type=str2bool,default=False)
 
 parser.add_argument('--critic_lr',type=float,default=3e-4) 
 parser.add_argument('--actor_lr',type=float,default=3e-4) 
-parser.add_argument('--temperature',type=float,default=0.05)
+parser.add_argument('--temperature',type=float,default=0.01)
 parser.add_argument('--use_layer_norm',type=str2bool,default=True)
 
 parser.add_argument('--momentum',type=float,default=0.9) 
-parser.add_argument('--num_actor_updates',type=int,default=50) 
-parser.add_argument('--clipping_ratio',type=float,default=0.1) 
+parser.add_argument('--num_actor_updates',type=int,default=20) 
+parser.add_argument('--clipping_ratio',type=float,default=0.2) 
 parser.add_argument('--gae_lambda',type=float,default=0.5) 
 parser.add_argument('--hidden_dims',type=int,default=256) 
 parser.add_argument('--episode_based',type=str2bool,default=False) 
@@ -80,10 +80,12 @@ args = parser.parse_args()
 print(args)
 
 
+#jax.config.update("jax_disable_jit", True)
+
 def train(args):
     
    
-    config.update("jax_debug_nans", True)
+    #config.update("jax_debug_nans", True)
 
     eval_episodes=10
     batch_size = 256
@@ -117,6 +119,7 @@ def train(args):
         actions=env.action_space.sample(),
         rewards=0.0,
         masks=1.0,
+        truncateds = 0.0,
         next_observations=env.observation_space.sample(),
         pre_actions = env.action_space.sample(),
         discounts=1.0,
@@ -190,6 +193,15 @@ def train(args):
                 idxs = jax.random.choice(agent.rng,a=transitions['observations'].shape[0], shape=(n_batches,256), replace=True)
                 batches = jax.vmap(lambda i: jax.tree.map(lambda x: x[i], transitions))(idxs)
                 agent = agent.update_critics_seq(batches,R2)
+                
+                ### Update V####
+                logging.debug('update V')
+                transitions = actor_buffer.get_all()
+                n_batches = 500
+                idxs = jax.random.choice(agent.rng,a=transitions['observations'].shape[0], shape=(n_batches,256), replace=True)
+                batches = jax.vmap(lambda i: jax.tree.map(lambda x: x[i], transitions))(idxs)
+                agent = agent.update_v_seq(batches,R2)
+                
                         
                 ### Update actor ###
                 actor_batch = actor_buffer.get_all()    

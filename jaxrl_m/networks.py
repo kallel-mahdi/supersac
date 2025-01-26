@@ -96,6 +96,22 @@ class OriginalCritic(nn.Module):
         
         return jnp.squeeze(Q, -1)
     
+    
+class OriginalV(nn.Module):
+    hidden_dims: Sequence[int]
+    use_layer_norm: bool = True
+    scale_final: Optional[float] = None
+
+    @nn.compact
+    def __call__(self, observations: jnp.ndarray,*args,**kwargs) -> jnp.ndarray:
+        
+        intermediate = MLP(self.hidden_dims,activate_final=True,
+                     use_layer_norm=self.use_layer_norm)(observations,*args, **kwargs)
+        
+        self.sow('intermediates', 'features', intermediate)
+        Q = nn.Dense(1, kernel_init=default_init())(intermediate)
+        
+        return jnp.squeeze(Q, -1)
 
 
 def ensemblize(cls, num_qs, out_axes=0, **kwargs):

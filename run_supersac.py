@@ -25,17 +25,13 @@ from jaxrl_m.evaluation import (EpisodeMonitor, evaluate, flatten,
 from jaxrl_m.rollout import (rollout_policy, rollout_policy2)
 from jaxrl_m.utils import flatten_rollouts
 from jaxrl_m.wandb import default_wandb_config, get_flag_dict, setup_wandb
-from jaxrl_m.onsac_clean import *
-from jaxrl_m.evaluate_critic import *
+from jaxrl_m.ppo_plus import *
 from jaxrl_m.utils import *
 from jaxrl_m.normalize import *
 from jaxrl_m.dmc import DMCGym
 
-#logging.basicConfig(level=logging.CRITICAL)
 logging.basicConfig(level=logging.DEBUG)  # Ignore warnings and below (INFO, WARNING, etc.)
 
-#jax.config.update("jax_enable_x64", True)
-jax.config.update('jax_default_matmul_precision', 'float32')
 
 # Set env variables
 os.environ["WANDB_API_KEY"]="28996bd59f1ba2c5a8c3f2cc23d8673c327ae230"
@@ -75,6 +71,8 @@ parser.add_argument('--clipping_ratio',type=float,default=0.2)
 parser.add_argument('--gae_lambda',type=float,default=0.5) 
 parser.add_argument('--hidden_dims',type=int,default=256) 
 parser.add_argument('--episode_based',type=str2bool,default=False) 
+parser.add_argument('--minibatch',type=str2bool,default=False) 
+parser.add_argument('--buffer_size',type=int,default=50_000) 
 
 args = parser.parse_args()
 print(args)
@@ -126,7 +124,7 @@ def train(args):
         log_probs=0.,
     )
 
-    buffer_size = args.num_rollouts*args.max_episode_steps if args.on_policy_data else 10*args.num_rollouts*args.max_episode_steps
+    buffer_size = args.num_rollouts*args.max_episode_steps if args.on_policy_data else args.buffer_size
     replay_buffer = ReplayBuffer.create(example_transition, size=int(buffer_size))
     actor_buffer = ActorReplayBuffer.create(example_transition, size=int(args.num_rollouts*args.max_episode_steps))
 
@@ -151,7 +149,8 @@ def train(args):
                     actor_hidden_dims=(args.hidden_dims,args.hidden_dims),
                     critic_hidden_dims=(args.hidden_dims,args.hidden_dims),
                     use_layer_norm= args.use_layer_norm,
-                    gae_lambda=args.gae_lambda
+                    gae_lambda=args.gae_lambda,
+                    minibatch = args.minibatch,
                     #**FLAGS.config
                     )
 
@@ -195,20 +194,17 @@ def train(args):
                 agent = agent.update_critics_seq(batches,R2)
                 
                 ### Update V####
-                logging.debug('update V')
-                transitions = actor_buffer.get_all()
-                n_batches = 500
-                idxs = jax.random.choice(agent.rng,a=transitions['observations'].shape[0], shape=(n_batches,256), replace=True)
-                batches = jax.vmap(lambda i: jax.tree.map(lambda x: x[i], transitions))(idxs)
-                agent = agent.update_v_seq(batches,R2)
+                # logging.debug('update V')
+                # transitions = actor_buffer.get_all()
+                # n_batches = 500
+                # idxs = jax.random.choice(agent.rng,a=transitions['observations'].shape[0], shape=(n_batches,256), replace=True)
+                # batches = jax.vmap(lambda i: jax.tree.map(lambda x: x[i], transitions))(idxs)
+                #agent = agent.update_v_seq(batches,R2)
                 
                         
                 ### Update actor ###
                 actor_batch = actor_buffer.get_all()    
                 
-            
-                        
-                #with jax.default_matmul_precision("float32"):
                 agent, actor_update_info = agent.update_actor(actor_batch,R2)    
                     
                 critic_update_info = {}

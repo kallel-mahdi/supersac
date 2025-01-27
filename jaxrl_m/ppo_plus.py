@@ -8,9 +8,10 @@ import numpy as np
 import optax
 
 from jaxrl_m.common import TrainState, nonpytree_field
-from jaxrl_m.networks import OriginalCritic, Policy,ensemblize,Critic
+from jaxrl_m.networks import OriginalCritic,OriginalV, Policy,ensemblize
 from jaxrl_m.typing import *
 import jax.lax as lax
+import chex
 
 def get_batch(i,batches):
     return  jax.tree.map(lambda x: x[i], batches)
@@ -19,17 +20,15 @@ def body(i,val):
     agent,batches = val
     return (agent.update_critics(get_batch(i,batches)),batches)
 
+
 class Temperature(nn.Module):
-    
-    initial_temperature: float = -3. ## (log(0.02))
-    #initial_temperature: float = -4.6 ## (log(0.02))
-    
-    
+    initial_temperature: float = 1.
+
     @nn.compact
     def __call__(self) -> jnp.ndarray:
         log_temp = self.param('log_temp',
                               init_fn=lambda key: jnp.full(
-                                  (), self.initial_temperature))
+                                  (), jnp.log(self.initial_temperature)))
         return jnp.exp(log_temp)
 
 
@@ -40,6 +39,7 @@ class SACAgent(flax.struct.PyTreeNode):
     actor: TrainState
     temp: TrainState
     config: dict = nonpytree_field()
+    
 
     #@jax.jit
     def update_critics(agent,batch: Batch):
@@ -51,27 +51,29 @@ class SACAgent(flax.struct.PyTreeNode):
                 def critic_loss_fn(critic_params):
                         
                         next_actions,next_log_probs,_ = agent.sample_actions(batch["next_observations"],seed=next_key)
-                        next_q_r,next_q_e = agent.critic(batch['next_observations'], next_actions,params=critic_params)
                         
-                        target_q_r = batch['rewards'] + agent.config['discount'] * batch['masks'] *next_q_r 
-                        #target_q_e =  batch['discounts'] * batch['masks'] *(next_q_e - agent.temp() * next_log_probs)  
-                        target_q_e = - agent.temp() * next_log_probs + agent.config['discount'] * batch['masks'] * next_q_e
-                        target_q_e = jax.lax.stop_gradient(target_q_e)
-                        target_q_r = jax.lax.stop_gradient(target_q_r)
+                        next_q  = agent.critic(batch['next_observations'], next_actions,params=critic_params)
                         
-                        q_r,q_e = agent.critic(batch['observations'], batch['actions'],params=critic_params)
+                        target_q = batch['rewards'] + agent.config['discount'] * batch['masks'] * next_q
+                        ### Add entropy
+                        target_q = target_q - agent.config['discount'] * batch['masks'] * next_log_probs * agent.temp()
+                        target_q = jax.lax.stop_gradient(target_q)
                         
-                        critic_loss = ((target_q_r-q_r)**2 + (target_q_e-q_e)**2).mean() 
+                        if agent.config['min_target']:
+                            target_q = jnp.min(target_q,axis=0) 
+                            target_q = jnp.repeat(target_q.reshape(1,-1),2,axis=0) ## make sure to keep same shape
+                           
+                        q = agent.critic(batch['observations'], batch['actions'],params=critic_params)
+                        critic_loss = ((q-target_q)**2).mean()
                         
                         return critic_loss, {
                         'critic_loss': critic_loss,
-                        'q1': q_r.mean(),
+                        'q1': q.mean(),
                     }  
                 
                 new_critic, critic_info = critic.apply_loss_fn(loss_fn=critic_loss_fn, has_aux=True)
                 
                 return new_critic,critic_info
-
 
 
         new_critics,critic_info = update_one_critic(agent.critic)
@@ -82,61 +84,60 @@ class SACAgent(flax.struct.PyTreeNode):
     #@jax.jit
     def update_critics_seq(agent,batches,R2):
         
-        
-        # if agent.config['num_critics']>1 and agent.config["adaptive_critics"]:
-     
-            
-        #     # worst = jnp.argmin(R2)
-        #     # params = OriginalCritic((256,256)).init(critic_key, agent.config["observations"], agent.config["actions"])['params']
-        #     # f = lambda x,param : x.at[worst].set(param)
-        #     # new_critic_params = jax.tree.map(f,agent.critic.params,params)
-        #     # new_opt_state = jax.vmap(agent.critic.tx.init)(new_critic_params)
-        #     # new_critics = agent.critic.replace(params=new_critic_params,opt_state=new_opt_state)
-        #     # agent = agent.replace(critic=new_critics)
-            
-            
-        #     critic = OriginalCritic((256,256))
-        #     reset = lambda rng,params : critic.init(rng,
-        #                                             agent.config["observations"], agent.config["actions"],False)["params"]
-        #     no_reset = lambda rng,params: params
-        #     f = lambda  mask,rng,params :lax.cond(mask,reset,no_reset,rng,params)
-        #     mask = jnp.zeros(( agent.config["num_critics"],))
-        #     mask = mask.at[jnp.argmin(R2)].set(1)
-        #     rngs = jax.random.split(agent.rng, agent.config["num_critics"])
-        #     new_params = jax.vmap(f,in_axes=(0,0,0))(mask,rngs,agent.critic.params)
-        #     new_opt_state = agent.critic.tx.init(new_params)
-        #     new_critic = agent.critic.replace(params=new_params,opt_state=new_opt_state)
-        #     agent = agent.replace(critic=new_critic)
-            
-        #     print(np.array(R2),print(np.array(mask)))
-    
-        ### Train critic 
-        
         size = batches["observations"].shape[0]
         agent,batches = jax.lax.fori_loop(0,size,body,(agent,batches))
         
         return agent
 
     
-    @jax.jit
+    #@jax.jit
     def update_actor(agent, batch: Batch,R2):
-       
-        def temp_loss_fn(temp_params, entropy, target_entropy):
-            temperature = agent.temp(params=temp_params)
-            entropy_diff = entropy-target_entropy
-            temp_loss = (temperature * entropy_diff).mean()
-            return temp_loss, {
-                'temp_loss': temp_loss,
-                'temperature': temperature,
-                'entropy_diff': entropy_diff,
-            }
         
+        @jax.jit
+        def compute_gae(rewards: jnp.ndarray, values: jnp.ndarray, next_values: jnp.ndarray, 
+                        dones: jnp.ndarray, truncations: jnp.ndarray, gamma: float = 0.995, 
+                        lam: float = 0.8) -> jnp.ndarray:
+            # Compute deltas (TD residuals)
+            
+            
+            deltas = rewards + gamma * next_values * (1 - dones) - values
+            deltas = deltas * (1 - truncations)
+            
+            # Define a function to update the cumulative advantage in a scan step
+            def update_advantage(cumulative_advantage, delta_and_mask):
+                delta, trunc = delta_and_mask
+                # Update advantage using GAE with truncation handling
+                cumulative_advantage = delta + gamma * lam * cumulative_advantage * (1 - trunc)
+                return cumulative_advantage, cumulative_advantage
+
+            # Use lax.scan to accumulate the advantages in reverse order
+            # Reverse deltas and truncations for the scan (scan works forward, but we want to process backwards)
+            reversed_deltas = deltas[::-1]
+            reversed_truncations = truncations[::-1]
+            
+            # Scan will return the final cumulative advantage and the full sequence of advantages
+            _, advantages = lax.scan(update_advantage, 0.0, (reversed_deltas, reversed_truncations))
+
+            # Reverse the advantages back to the original order
+            advantages = advantages[::-1]
+            advantages = advantages* (1 - truncations)
+
+            return advantages,None
+                
+        @jax.jit
         def actor_loss_fn(
                 actor_params,
                 adv,
+                batch,
+                idx,
         ):
             
             ### Compute probability of old actions under new policy
+            
+
+            batch = jax.tree_map(lambda x:x[idx],batch)
+            adv = adv[idx]
+            
             discounts,masks,logp = batch["discounts"],batch["masks"],batch["log_probs"]
             dist = agent.actor(batch["observations"],params=actor_params)
             pre_actions = batch["pre_actions"]
@@ -157,6 +158,7 @@ class SACAgent(flax.struct.PyTreeNode):
 
             # Policy loss
             clip_coef = agent.config["clipping_ratio"] ##default 0.2 
+            
             actor_loss1 = masks*adv * ratio
             actor_loss2 = masks*adv * jnp.clip(ratio, 1 - clip_coef, 1 + clip_coef)
 
@@ -179,76 +181,71 @@ class SACAgent(flax.struct.PyTreeNode):
                 'approx_kl':approx_kl
             }
             
+        @jax.jit
+        def temp_loss_fn(temp_params, entropy, target_entropy):
+            temperature = agent.temp(params=temp_params)
+            temp_loss = (temperature * (entropy - target_entropy)).mean()
+            return temp_loss, {
+                'temp_loss': temp_loss,
+                'temperature': temperature,
+            }
+            
      
         
         new_rng, curr_key, next_key = jax.random.split(agent.rng, 3)
 
-        R2 = R2.reshape(-1,1)
-        R2 = jax.nn.softmax(R2,axis=0)
 
-        observations = batch["observations"]
+        observations,next_observations = batch["observations"],batch["next_observations"]
+        
+        observations = jnp.concatenate([observations, next_observations[-1][None]], axis=0)
         
         
-        j = 10
-        qs,logps = jnp.zeros((observations.shape[0],)),jnp.zeros((observations.shape[0],))
-      
-        ### Compute value for the fixed states
         
-        for i in range(j):
+ 
+        def evaluate(observations,key):
             
-            curr_key,_ = jax.random.split(curr_key)
-            actions, log_p,_ = agent.sample_actions(observations,seed=curr_key)
-            q_r_all,q_e_all = agent.critic(observations,actions)
-            q = jnp.sum(R2*q_r_all,axis=0)+jnp.mean(q_e_all,axis=0)
-            qs+=q
-            logps+=log_p
-                    
-        v = qs/j
-        h = -(logps/j)
+            actions, log_p,_ = agent.sample_actions(observations,seed=key)
+            q_all = agent.critic(observations,actions)
+            v = jnp.mean(q_all,axis=0)
+            
+            return v,-log_p
         
+        vs,hs = jax.vmap(evaluate,in_axes=(None,0))(observations,jax.random.split(curr_key,10))
+        
+        tmp_v,tmp_h = jnp.mean(vs,axis=0),jnp.mean(hs,axis=0)
+        tmp_v += agent.temp()*tmp_h
+        v,next_v= tmp_v[:-1],tmp_v[1:]
+        
+        rewards = batch["rewards"]-agent.temp()*batch["log_probs"]
+        dones = jnp.bool(1-batch["masks"])
+        truncations = jnp.bool(batch["truncateds"])
+        
+        adv,_ = compute_gae(rewards.squeeze(),v.squeeze(),next_v.squeeze(),dones.squeeze(),truncations.squeeze(),lam=agent.config['gae_lambda'])
+        adv = adv.reshape(-1)
+        adv = (adv - jnp.mean(adv)) / (jnp.std(adv) + 1e-8)
+        
+
         ### Compute advantage for the fixed states AND actions
-        q_r_all,q_e_all = agent.critic(batch["observations"],batch["actions"])
-        q = jnp.sum(R2*q_r_all,axis=0)+jnp.mean(q_e_all,axis=0)
-        adv = q-v + agent.temp()*(-batch["log_probs"]-h)### This one worked
-        
-        grads,info = jax.grad(actor_loss_fn,has_aux=True)(agent.actor.params,adv)
+        # q = agent.critic(batch["observations"],batch["actions"]).mean(axis=0)
+        # adv = q-tmp_v2 + agent.temp()*(-batch["log_probs"]-tmp_h)### This one worked
         
         for i in range(agent.config["num_actor_updates"]):
+     
             
-            new_actor, actor_info = agent.actor.apply_loss_fn(actor_loss_fn,True,adv)
-            new_temp, temp_info = agent.temp.apply_loss_fn(temp_loss_fn,True,actor_info['entropy'], agent.config['target_entropy'])
+            new_rng,_ = jax.random.split(new_rng)
+            
+            if agent.config["minibatch"]:
+                idx = jax.random.choice(new_rng, adv.shape[0], shape=(256,), replace=True)
+            else : 
+                idx = jnp.arange(0, adv.shape[0]-1)
+                
+            new_actor, actor_info = agent.actor.apply_loss_fn(actor_loss_fn,True,adv,batch,idx)#adv
+            new_temp, temp_info = agent.temp.apply_loss_fn(temp_loss_fn,True,actor_info['entropy'],agent.config['target_entropy'])
+
             agent = agent.replace(rng=new_rng, actor=new_actor,temp=new_temp)
             
-        return agent, {**actor_info,**temp_info,"grads":grads}
+        return agent, {**actor_info,**temp_info}
 
-
-
-    @jax.jit
-    def update_actor_sac(agent, batch: Batch,R2):
-        new_rng, curr_key, next_key = jax.random.split(agent.rng, 3)
-
-        
-
-        def actor_loss_fn(actor_params):
-            
-            # dist = agent.actor(batch['observations'], params=actor_params)
-
-            # pre_actions,pre_log_ps = dist.sample_and_log_prob(seed=new_rng)
-            
-            actions,log_ps,_ = agent.sample_actions(batch["observations"],params=actor_params,seed=new_rng)
-
-            q = agent.critic(batch["observations"],actions).mean(axis=0)
-
-            q = batch["discounts"]*q
-            
-            actor_loss = (agent.temp()*log_ps-q).mean()
-            
-            return actor_loss,{}
-
-        grads,info = jax.grad(actor_loss_fn,has_aux=True)(agent.actor.params)
-        new_actor,_ = agent.actor.apply_loss_fn(loss_fn=actor_loss_fn,has_aux=True)
-        actor_info = {"grads":grads}
-        return agent.replace(rng=new_rng,actor=new_actor), {**actor_info}
             
         
     @jax.jit
@@ -306,17 +303,20 @@ def create_learner(
                 momentum,
                 actor_lr,
                 critic_lr,
-                temp_lr,
+                temperature,
                 num_actor_updates,
                 clipping_ratio,
                 actor_hidden_dims: Sequence[int],
                 critic_hidden_dims: Sequence[int],
+                gae_lambda : float,
                 use_layer_norm : bool,
+                minibatch : bool = False,
                 target_entropy: float = None,
                 state_dependent_std=True,
                 tanh_squash_distribution=False,
                 tanh_squash_actions=True,
                 use_bias=True,
+                
                 
             **kwargs):
 
@@ -329,20 +329,24 @@ def create_learner(
         actor_def = Policy(actor_hidden_dims, action_dim=action_dim,use_bias=use_bias,
             state_dependent_std=state_dependent_std, tanh_squash_distribution=tanh_squash_distribution,use_layer_norm=use_layer_norm)
 
-        critic_def = ensemblize(Critic,num_critics)(hidden_dims=critic_hidden_dims)
+        critic_def = ensemblize(OriginalCritic,num_critics)(hidden_dims=critic_hidden_dims)
         critic_params = critic_def.init(critic_key, observations, actions)['params']
         critic = TrainState.create(critic_def, critic_params, tx=optax.adam(learning_rate=critic_lr))
+        
+        
+        v_def = ensemblize(OriginalV,num_critics)(hidden_dims=critic_hidden_dims)
+        v_params = v_def.init(critic_key, observations, actions)['params']
+        v = TrainState.create(v_def, v_params, tx=optax.adam(learning_rate=critic_lr))
 
         actor_params = actor_def.init(actor_key, observations)['params']
-        temp_def = Temperature()
+        temp_def = Temperature(temperature)
         temp_params = temp_def.init(rng)['params']
         
         tx = optax.chain(
-            optax.clip_by_global_norm(0.5),
+            optax.clip_by_global_norm(0.5), ## This is necessary to avoid exploding gradients due to numerical instabilities.
             optax.adam(learning_rate=actor_lr,b1=momentum),
-            #optax.rmsprop(learning_rate=actor_lr),
         )
-        temp = TrainState.create(temp_def, temp_params, tx=optax.adam(learning_rate=temp_lr,b1=momentum))
+        temp = TrainState.create(temp_def, temp_params, tx=optax.adam(learning_rate=3e-4,b1=momentum)) ##placeholder
         actor = TrainState.create(actor_def, actor_params, tx=tx)
             
         if target_entropy is None:
@@ -362,8 +366,10 @@ def create_learner(
             clipping_ratio = clipping_ratio,
             min_target = min_target,
             tanh_squash_actions=tanh_squash_actions,
+            gae_lambda=gae_lambda,
+            minibatch=minibatch,
             
         ))
 
-        return SACAgent(rng, critic=critic, target_critic=critic, actor=actor, temp=temp, config=config)
+        return SACAgent(rng, critic=critic, target_critic=v, actor=actor, temp=temp, config=config)
 

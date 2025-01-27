@@ -127,7 +127,7 @@ args = parser.parse_args()
 env = LQR.generate(s_dim=args.state_dim,a_dim=args.a_dim,gamma=args.gamma,episodic=True,horizon=args.max_episode_steps,random_init=True)
 
 
-from jaxrl_m.onsac_clean import *
+from jaxrl_m.ppo_plus import *
 
 hidden_dims = ()
 NUM_UPDATES = args.num_rollouts*args.max_episode_steps

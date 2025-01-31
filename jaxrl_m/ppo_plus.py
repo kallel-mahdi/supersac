@@ -81,17 +81,25 @@ class SACAgent(flax.struct.PyTreeNode):
         
         return agent
     
-    #@jax.jit
-    def update_critics_seq(agent,batches,R2):
+    @jax.jit
+    def update_critics_seq(agent,transitions,n_batches=200):
         
-        size = batches["observations"].shape[0]
-        agent,batches = jax.lax.fori_loop(0,size,body,(agent,batches))
+        # idxs = jax.random.choice(agent.rng,a=transitions['observations'].shape[0], shape=(n_batches,256), replace=True)
+        
+
+        indexes = jnp.arange(transitions['observations'].shape[0])
+        indexes = jax.random.permutation(agent.rng, indexes)
+        batch_size = indexes.shape[0] // n_batches
+        idxs = indexes[:batch_size * n_batches].reshape((n_batches, batch_size))
+        #jax.debug.print('idxs',idxs.shape)
+        batches = jax.vmap(lambda i: jax.tree.map(lambda x: x[i], transitions))(idxs)
+        agent,batches = jax.lax.fori_loop(0,n_batches,body,(agent,batches))
         
         return agent
 
     
-    #@jax.jit
-    def update_actor(agent, batch: Batch,R2):
+    @jax.jit
+    def update_actor(agent, batch: Batch):
         
         @jax.jit
         def compute_gae(rewards: jnp.ndarray, values: jnp.ndarray, next_values: jnp.ndarray, 
@@ -215,25 +223,24 @@ class SACAgent(flax.struct.PyTreeNode):
         dones = jnp.bool(1-batch["masks"])
         truncations = jnp.bool(batch["truncateds"])
         
-        adv,_ = compute_gae(rewards.squeeze(),v.squeeze(),next_v.squeeze(),dones.squeeze(),truncations.squeeze(),lam=agent.config['gae_lambda'])
+        adv,_ = compute_gae(rewards.squeeze(),v.squeeze(),next_v.squeeze(),dones.squeeze(),truncations.squeeze(),
+                            gamma=agent.config['discount'],lam=agent.config['gae_lambda'])
         adv = adv.reshape(-1)
-        adv = (adv - jnp.mean(adv)) / (jnp.std(adv) + 1e-8)
+        #adv = (adv - jnp.mean(adv)) / (jnp.std(adv) + 1e-8)
         
 
         ### Compute advantage for the fixed states AND actions
         # q = agent.critic(batch["observations"],batch["actions"]).mean(axis=0)
         # adv = q-tmp_v2 + agent.temp()*(-batch["log_probs"]-tmp_h)### This one worked
         
-        for i in range(agent.config["num_actor_updates"]):
+        
+        indexes = jnp.arange(adv.shape[0])
+        indexes = jax.random.permutation(new_rng, indexes)
+        batch_size = indexes.shape[0] // agent.config["num_actor_updates"]
+        index_batches = jnp.split(indexes[:batch_size * agent.config["num_actor_updates"]], agent.config["num_actor_updates"])
+        
+        for idx in index_batches:
      
-            
-            new_rng,_ = jax.random.split(new_rng)
-            
-            if agent.config["minibatch"]:
-                idx = jax.random.choice(new_rng, adv.shape[0], shape=(256,), replace=True)
-            else : 
-                idx = jnp.arange(0, adv.shape[0]-1)
-                
             new_actor, actor_info = agent.actor.apply_loss_fn(actor_loss_fn,True,adv,batch,idx)#adv
             new_temp, temp_info = agent.temp.apply_loss_fn(temp_loss_fn,True,actor_info['entropy'],agent.config['target_entropy'])
 

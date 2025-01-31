@@ -25,10 +25,12 @@ from jaxrl_m.evaluation import (EpisodeMonitor, evaluate, flatten,
 from jaxrl_m.rollout import (rollout_policy, rollout_policy2)
 from jaxrl_m.utils import flatten_rollouts
 from jaxrl_m.wandb import default_wandb_config, get_flag_dict, setup_wandb
-from jaxrl_m.ppo_plus import *
+from jaxrl_m.ppo_plus_dirty import *
 from jaxrl_m.utils import *
 from jaxrl_m.normalize import *
 from jaxrl_m.dmc import DMCGym
+
+import copy
 
 logging.basicConfig(level=logging.DEBUG)  # Ignore warnings and below (INFO, WARNING, etc.)
 
@@ -41,19 +43,19 @@ os.environ['TF_CUDNN_DETERMINISTIC'] = '1'
 ##############################
 parser = argparse.ArgumentParser()
 
-parser.add_argument('--seed',type=int,default=42) 
+parser.add_argument('--seed',type=int,default=2025) 
 
 parser.add_argument('--algo_name', type=str, default='superppo', help='the name of the RL algorithm')
 parser.add_argument('--project_name',type=str,default="single_exp") 
-parser.add_argument('--env_name',type=str,default="Ant-v5") 
+parser.add_argument('--env_name',type=str,default="Hopper-v5") 
 parser.add_argument('--max_steps',type=int,default=1_000_000) 
 parser.add_argument('--max_episode_steps',type=int,default=1000) 
 parser.add_argument('--num_rollouts',type=int,default=5) 
-parser.add_argument('--gamma',type=float,default=0.995)
-parser.add_argument('--healthy_reward',type=float,default=0.5) 
+parser.add_argument('--gamma',type=float,default=0.99)
+parser.add_argument('--healthy_reward',type=float,default=1.) 
 parser.add_argument('--entropy_coeff',type=float,default=1.) 
 
-parser.add_argument('--num_critics',type=int,default=1)
+parser.add_argument('--num_critics',type=int,default=2)
 parser.add_argument('--discount_actor',type=str2bool,default=True)
 parser.add_argument('--discount_entropy',type=str2bool,default=True) 
 parser.add_argument('--on_policy_data',type=str2bool,default=False)
@@ -62,17 +64,18 @@ parser.add_argument('--min_target',type=str2bool,default=False)
 
 parser.add_argument('--critic_lr',type=float,default=3e-4) 
 parser.add_argument('--actor_lr',type=float,default=3e-4) 
-parser.add_argument('--temperature',type=float,default=0.01)
-parser.add_argument('--use_layer_norm',type=str2bool,default=False)
+parser.add_argument('--temperature',type=float,default=0.05)
+parser.add_argument('--use_layer_norm',type=str2bool,default=True)
 
 parser.add_argument('--momentum',type=float,default=0.9) 
 parser.add_argument('--num_actor_updates',type=int,default=20) 
 parser.add_argument('--clipping_ratio',type=float,default=0.2) 
-parser.add_argument('--gae_lambda',type=float,default=0.5) 
+parser.add_argument('--gae_lambda',type=float,default=0.95) 
 parser.add_argument('--hidden_dims',type=int,default=256) 
 parser.add_argument('--episode_based',type=str2bool,default=False) 
-parser.add_argument('--minibatch',type=str2bool,default=False) 
+parser.add_argument('--minibatch',type=str2bool,default=True) 
 parser.add_argument('--buffer_size',type=int,default=50_000) 
+parser.add_argument('--policy_steps',type=int,default=2000) 
 
 args = parser.parse_args()
 print(args)
@@ -80,10 +83,12 @@ print(args)
 
 #jax.config.update("jax_disable_jit", True)
 
+#config.update("jax_debug_nans", True)
+
 def train(args):
     
    
-    #config.update("jax_debug_nans", True)
+    
 
     eval_episodes=10
     batch_size = 256
@@ -105,6 +110,17 @@ def train(args):
     else:
         print(f'env_name: {args.env_name}, max_episode_steps: {args.max_episode_steps}, healthy_reward: {args.healthy_reward}')
         env = gym.make(args.env_name, max_episode_steps=args.max_episode_steps, healthy_reward=args.healthy_reward)
+        
+
+    env = gym.wrappers.FlattenObservation(env)  # deal with dm_control's Dict observation space
+    env = gym.wrappers.RecordEpisodeStatistics(env)
+    env = gym.wrappers.ClipAction(env)
+    #env = gym.wrappers.NormalizeObservation(env)
+    env = gym.wrappers.NormalizeObservation(env)
+    env = gym.wrappers.TransformObservation(env, lambda obs: np.clip(obs, -10, 10),env.observation_space)
+    
+    env = gym.wrappers.NormalizeReward(env, gamma=args.gamma)
+    env = gym.wrappers.TransformReward(env, lambda reward: np.clip(reward, -10, 10))
     
     eval_env = EpisodeMonitor(gym.make(args.env_name,max_episode_steps=1000))
     
@@ -171,48 +187,36 @@ def train(args):
                 
                 logging.debug('policy rollout')
                 if args.on_policy_data: replay_buffer = replay_buffer.reset()
-                replay_buffer,actor_buffer,policy_rollout,policy_return,variance,undisc_policy_return,num_steps = rollout_fn(
+                replay_buffer,actor_buffer,policy_return,undisc_policy_return,num_steps = rollout_fn(
                                                                         agent,env,exploration_rng,
                                                                         replay_buffer,actor_buffer,eval=False,
-                                                                        num_rollouts=args.num_rollouts,discount = args.gamma,max_length=args.max_episode_steps)
-                                                              
-                policy_rollouts.append(policy_rollout)
-                
+                                                                        discount = args.gamma,max_steps=args.policy_steps)
+                         
+               
                 unlogged_steps += num_steps
                 cached_steps += num_steps
                 
                 i+=num_steps
                 pbar.update(int(num_steps))
                 
+                
+                for _ in range(10):
             
-                ### Update critics ###:
-                logging.debug('update critics')
-                transitions = replay_buffer.get_all()
-                n_batches = args.num_rollouts*args.max_episode_steps
-                idxs = jax.random.choice(agent.rng,a=transitions['observations'].shape[0], shape=(n_batches,256), replace=True)
-                batches = jax.vmap(lambda i: jax.tree.map(lambda x: x[i], transitions))(idxs)
-                agent = agent.update_critics_seq(batches,R2)
-                
-                ### Update V####
-                # logging.debug('update V')
-                # transitions = actor_buffer.get_all()
-                # n_batches = 500
-                # idxs = jax.random.choice(agent.rng,a=transitions['observations'].shape[0], shape=(n_batches,256), replace=True)
-                # batches = jax.vmap(lambda i: jax.tree.map(lambda x: x[i], transitions))(idxs)
-                #agent = agent.update_v_seq(batches,R2)
-                
-                        
-                ### Update actor ###
-                actor_batch = actor_buffer.get_all()    
-                
-                agent, actor_update_info = agent.update_actor(actor_batch,R2)    
+                    ### Update critics ###:
+                    logging.debug('update critics')
+                    transitions = replay_buffer.get_all()
+                    agent = agent.update_v_seq(transitions)
                     
-                critic_update_info = {}
+                            
+                    ### Update actor ###
+                    actor_batch = actor_buffer.get_all()    
+                    agent, actor_update_info = agent.update_actor(actor_batch)    
+                    critic_update_info = {}
+                
                 update_info = {**critic_update_info, **actor_update_info}
-                n_grads += 1
                 
                 ### Log training info ###
-                exploration_metrics = {f'exploration/disc_return': policy_return,'training/std': jnp.sqrt(variance)}
+                exploration_metrics = {f'exploration/disc_return': policy_return}
                 train_metrics = {f'training/{k}': v for k, v in update_info.items()}
                 train_metrics['training/undisc_return'] = undisc_policy_return
                 
@@ -223,16 +227,15 @@ def train(args):
                 
                 if unlogged_steps >= log_interval:
                     
-                    _,_,policy_rollout,policy_return,variance,undisc_policy_return,num_steps = rollout_policy(
+
+                    eval_env = copy.deepcopy(env)
+                        
+                    _,_,policy_return,undisc_policy_return,num_steps = rollout_policy2(
                                                                     agent,eval_env,exploration_rng,
                                                                     None,None,eval=True,
-                                                                    num_rollouts=10,
-                                                                    discount = args.gamma,max_length=1000)
-                    eval_metrics = {"policy_return": policy_return,"std": jnp.sqrt(variance),"undisc_policy_return": undisc_policy_return}
-
-                    
-                    # policy_fn = partial(supply_rng(agent.sample_action), temperature=0.)
-                    # eval_metrics = evaluate(policy_fn, eval_env, num_episodes=10)
+                                                                    discount = args.gamma,max_steps=10000)
+                    eval_metrics = {"policy_return": policy_return,"undisc_policy_return": undisc_policy_return}
+                    print(eval_metrics)
                     
                     eval_metrics = {f'evaluation/{k}': v for k, v in eval_metrics.items()}
                     eval_metrics['n_grads']=int(n_grads)

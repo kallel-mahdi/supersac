@@ -88,79 +88,24 @@ class SACAgent(flax.struct.PyTreeNode):
         return agent
 
     #@jax.jit
-    def update_v_seq(agent,batches,R2):
-        
+    def update_v_seq(agent,transitions,n_batches=128):
     
-        size = batches["observations"].shape[0]
-        agent,batches = jax.lax.fori_loop(0,size,body2,(agent,batches))
-        
-        jax.debug.print("🤯  🤯")
+        idxs = jax.random.choice(agent.rng,a=transitions['observations'].shape[0], shape=(n_batches,256), replace=True)
+        batches = jax.vmap(lambda i: jax.tree.map(lambda x: x[i], transitions))(idxs)
+        agent,batches = jax.lax.fori_loop(0,n_batches,body2,(agent,batches))
         
         return agent
 
 
-    #@jax.jit
-    def update_critics(agent,batch: Batch):
-        
-        new_rng, curr_key, next_key = jax.random.split(agent.rng, 3)
-
-        def update_one_critic(critic):
-                            
-                def critic_loss_fn(critic_params):
-                        
-                        next_actions,next_log_probs,_ = agent.sample_actions(batch["next_observations"],seed=next_key)
-                        
-                        next_q  = agent.critic(batch['next_observations'], next_actions,params=critic_params)
-                        
-                        target_q = batch['rewards'] + agent.config['discount'] * batch['masks'] * next_q
-                        ### Add entropy
-                        target_q = target_q - agent.config['discount'] * batch['masks'] * next_log_probs * agent.temp()
-                        target_q = jax.lax.stop_gradient(target_q)
-                        
-                        if agent.config['min_target']:
-                            target_q = jnp.min(target_q,axis=0) 
-                            target_q = jnp.repeat(target_q.reshape(1,-1),2,axis=0) ## make sure to keep same shape
-                           
-                        q = agent.critic(batch['observations'], batch['actions'],params=critic_params)
-                        critic_loss = ((q-target_q)**2).mean()
-                        
-                        return critic_loss, {
-                        'critic_loss': critic_loss,
-                        'q1': q.mean(),
-                    }  
-                
-                new_critic, critic_info = critic.apply_loss_fn(loss_fn=critic_loss_fn, has_aux=True)
-                
-                return new_critic,critic_info
-
-
-        new_critics,critic_info = update_one_critic(agent.critic)
-        agent = agent.replace(rng=new_rng,critic=new_critics)
-        
-        return agent
-    
-    #@jax.jit
-    def update_critics_seq(agent,batches,R2):
-        
-     
-        
-        size = batches["observations"].shape[0]
-        agent,batches = jax.lax.fori_loop(0,size,body,(agent,batches))
-        
-        return agent
-
-    
     @jax.jit
-    def update_actor(agent, batch: Batch,R2):
-        
+    def update_actor(agent, batch: Batch):
         
         @jax.jit
         def compute_gae(rewards: jnp.ndarray, values: jnp.ndarray, next_values: jnp.ndarray, 
-                        dones: jnp.ndarray, truncations: jnp.ndarray, gamma: float = 0.995, 
-                        lam: float = 0.8) -> jnp.ndarray:
+                        dones: jnp.ndarray, truncations: jnp.ndarray, gamma: float, 
+                        lam: float) -> jnp.ndarray:
+            
             # Compute deltas (TD residuals)
-            
-            
             deltas = rewards + gamma * next_values * (1 - dones) - values
             deltas = deltas * (1 - truncations)
             
@@ -185,62 +130,7 @@ class SACAgent(flax.struct.PyTreeNode):
 
             return advantages,None
                 
-        def compute_gae_old(
-            r_t,
-            values,
-            next_values,
-            discount_t,
-            truncation_flags,
-            lambda_ = 0.95,
-            standardize_advantages: bool = False,
-        ) :
-           
-            
-
-            truncation_mask = 1.0 - truncation_flags
-
-            # Swap axes to make time axis the first dimension
-         
-            batch_size = r_t.shape[0]
-
-            chex.assert_type([r_t, values, discount_t, truncation_mask], float)
-
-            lambda_ = jnp.ones_like(discount_t) * lambda_  # If scalar, make into vector.
-
-            delta_t = r_t + discount_t * next_values - values
-            delta_t *= truncation_mask
-
-            # Iterate backwards to calculate advantages.
-            def _body(
-                acc: chex.Array, xs: Tuple[chex.Array, chex.Array, chex.Array, chex.Array]
-            ) -> Tuple[chex.Array, chex.Array]:
-                deltas, discounts, lambda_, trunc_mask = xs
-                acc = deltas + discounts * lambda_ * trunc_mask * acc
-                return acc, acc
-
-            _, advantage_t = jax.lax.scan(
-                _body,
-                jnp.zeros(batch_size),
-                (delta_t, discount_t, lambda_, truncation_mask),
-                reverse=True,
-                unroll=16,
-            )
-
-            target_values = values + advantage_t
-            advantage_t *= truncation_mask
-            
-            advantage_t, target_values = jax.tree_util.tree_map(
-                    lambda x: jax.lax.stop_gradient(x), (advantage_t, target_values)
-                )
-
-            # if standardize_advantages:
-            #     advantage_t = jax.nn.standardize(advantage_t, axis=(0, 1))
-
-            return advantage_t, target_values
-
-
-
-      
+        @jax.jit
         def actor_loss_fn(
                 actor_params,
                 adv,
@@ -275,8 +165,6 @@ class SACAgent(flax.struct.PyTreeNode):
             # Policy loss
             clip_coef = agent.config["clipping_ratio"] ##default 0.2 
             
-            
-            
             actor_loss1 = masks*adv * ratio
             actor_loss2 = masks*adv * jnp.clip(ratio, 1 - clip_coef, 1 + clip_coef)
 
@@ -299,6 +187,7 @@ class SACAgent(flax.struct.PyTreeNode):
                 'approx_kl':approx_kl
             }
             
+        @jax.jit
         def temp_loss_fn(temp_params, entropy, target_entropy):
             temperature = agent.temp(params=temp_params)
             temp_loss = (temperature * (entropy - target_entropy)).mean()
@@ -307,18 +196,17 @@ class SACAgent(flax.struct.PyTreeNode):
                 'temperature': temperature,
             }
             
-     
-        
-        new_rng, curr_key, next_key = jax.random.split(agent.rng, 3)
 
+        new_rng, curr_key, next_key = jax.random.split(agent.rng, 3)
 
         observations,next_observations = batch["observations"],batch["next_observations"]
         
- 
+        observations = jnp.concatenate([observations, next_observations[-1][None]], axis=0)
+        
         def evaluate(observations,key):
             
             actions, log_p,_ = agent.sample_actions(observations,seed=key)
-            q_all = agent.critic(observations,actions)
+            q_all = agent.target_critic(observations)
             v = jnp.mean(q_all,axis=0)
             
             return v,-log_p
@@ -326,63 +214,31 @@ class SACAgent(flax.struct.PyTreeNode):
         vs,hs = jax.vmap(evaluate,in_axes=(None,0))(observations,jax.random.split(curr_key,10))
         
         tmp_v,tmp_h = jnp.mean(vs,axis=0),jnp.mean(hs,axis=0)
+        tmp_v += agent.temp()*tmp_h
+        v,next_v= tmp_v[:-1],tmp_v[1:]
         
-        #tmp_v,tmp_h = agent.target_critic(batch["observations"]).mean(axis=0),-batch["log_probs"]
-      
-        #tmp_v,tmp_h = agent.critic(batch["observations"],batch["actions"]).mean(axis=0),
+        rewards = batch["rewards"]-agent.temp()*batch["log_probs"]
+        dones = jnp.bool(1-batch["masks"])
+        truncations = jnp.bool(batch["truncateds"])
         
-        v,h = tmp_v[:-1],tmp_h[:-1]
-        next_v,next_h = tmp_v[1:],tmp_h[1:]
-        
-        v = v + agent.temp()*h
-        next_v = next_v + agent.temp()*next_h
-        rewards = batch["rewards"][:-1]-agent.temp()*batch["log_probs"][:-1]
-        discounts = 0.995*jnp.bool(batch["masks"][:-1])
-        dones = jnp.bool(1-batch["masks"][:-1])
-        truncations = jnp.bool(batch["truncateds"][:-1])
-        
-        
-        
-        
-        
-        jax.debug.print("rewards shape: {x}", x=rewards.shape)
-        jax.debug.print("v shape: {x}", x=v.shape)
-        jax.debug.print("next_v shape: {x}", x=next_v.shape)
-        jax.debug.print("discounts shape: {x}", x=discounts.shape) 
-        jax.debug.print("truncations shape: {x}", x=truncations.shape)
-        adv,_ = compute_gae(rewards.squeeze(),v.squeeze(),next_v.squeeze(),dones.squeeze(),truncations.squeeze(),lam=agent.config['gae_lambda'])
-        jax.debug.print("adv shape: {x}", x=adv.shape)
-        
-        jax.debug.print("adv : {x} {y}", x=adv[0],y=adv[1])
+        adv,_ = compute_gae(rewards.squeeze(),v.squeeze(),next_v.squeeze(),dones.squeeze(),truncations.squeeze(),
+                            gamma=agent.config["discount"],lam=agent.config['gae_lambda'])
         adv = adv.reshape(-1)
-        jax.debug.print("adv shape: {x}", x=adv.shape)
-        
-        
-        
-        
+        adv = (adv - jnp.mean(adv)) / (jnp.std(adv) + 1e-8)
         
 
         ### Compute advantage for the fixed states AND actions
-        
-        
         # q = agent.critic(batch["observations"],batch["actions"]).mean(axis=0)
-        
         # adv = q-tmp_v2 + agent.temp()*(-batch["log_probs"]-tmp_h)### This one worked
         
         
+        indexes = jnp.arange(adv.shape[0])
+        indexes = jax.random.permutation(new_rng, indexes)
+        batch_size = indexes.shape[0] // agent.config["num_actor_updates"]
+        index_batches = jnp.split(indexes[:batch_size * agent.config["num_actor_updates"]], agent.config["num_actor_updates"])
         
-        
-        
-
+        for idx in index_batches:
      
-   
-        
-        for i in range(agent.config["num_actor_updates"]):
-     
-            
-            new_rng,_ = jax.random.split(new_rng)
-            #idx = jax.random.choice(new_rng, adv.shape[0], shape=(256,), replace=True)
-            idx = jnp.arange(0, 4998)
             new_actor, actor_info = agent.actor.apply_loss_fn(actor_loss_fn,True,adv,batch,idx)#adv
             new_temp, temp_info = agent.temp.apply_loss_fn(temp_loss_fn,True,actor_info['entropy'],agent.config['target_entropy'])
 
@@ -390,8 +246,7 @@ class SACAgent(flax.struct.PyTreeNode):
             
         return agent, {**actor_info,**temp_info}
 
-
-
+ 
     @jax.jit
     def update_actor_sac(agent, batch: Batch,R2):
         new_rng, curr_key, next_key = jax.random.split(agent.rng, 3)

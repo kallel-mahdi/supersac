@@ -30,8 +30,8 @@ parser.add_argument('--adaptive_critics',type=str2bool,default=False)
 parser.add_argument('--min_target',type=str2bool,default=False) 
 parser.add_argument('--momentum',type=float,default=0.) 
 
-parser.add_argument('--entropy_coeff',type=float,default=0.5) 
-parser.add_argument('--healthy_reward',type=float,default=0.5) 
+parser.add_argument('--entropy_coeff',type=float,default=1.) 
+parser.add_argument('--healthy_reward',type=float,default=1.) 
 parser.add_argument('--max_episode_steps',type=int,default=1000) 
 parser.add_argument('--episode_based',type=bool,default=False)
 

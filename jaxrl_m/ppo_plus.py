@@ -82,7 +82,7 @@ class SACAgent(flax.struct.PyTreeNode):
         return agent
     
     @jax.jit
-    def update_critics_seq(agent,transitions,n_batches=200):
+    def update_critics_seq(agent,transitions,n_batches=400):
         
         # idxs = jax.random.choice(agent.rng,a=transitions['observations'].shape[0], shape=(n_batches,256), replace=True)
         
@@ -346,7 +346,7 @@ def create_learner(
         
         tx = optax.chain(
             optax.clip_by_global_norm(0.5), ## This is necessary to avoid exploding gradients due to numerical instabilities.
-            optax.adam(learning_rate=actor_lr,b1=momentum),
+            optax.adam(learning_rate=actor_lr,b1=momentum,b2=0.99),
         )
         temp = TrainState.create(temp_def, temp_params, tx=optax.adam(learning_rate=3e-4,b1=momentum)) ##placeholder
         actor = TrainState.create(actor_def, actor_params, tx=tx)

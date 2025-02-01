@@ -28,9 +28,9 @@ from jaxrl_m.wandb import default_wandb_config, get_flag_dict, setup_wandb
 from jaxrl_m.ppo_plus import *
 from jaxrl_m.utils import *
 from jaxrl_m.normalize import *
-from jaxrl_m.dmc import DMCGym
+#from jaxrl_m.dmc import DMCGym
 
-logging.basicConfig(level=logging.DEBUG)  # Ignore warnings and below (INFO, WARNING, etc.)
+#logging.basicConfig(level=logging.DEBUG)  # Ignore warnings and below (INFO, WARNING, etc.)
 
 
 # Set env variables
@@ -45,7 +45,7 @@ parser.add_argument('--seed',type=int,default=21)
 
 parser.add_argument('--algo_name', type=str, default='superppo', help='the name of the RL algorithm')
 parser.add_argument('--project_name',type=str,default="single_exp") 
-parser.add_argument('--env_name',type=str,default="Walker2d-v5") 
+parser.add_argument('--env_name',type=str,default="Ant-v5") 
 parser.add_argument('--max_steps',type=int,default=1_000_000) 
 parser.add_argument('--max_episode_steps',type=int,default=1000) 
 parser.add_argument('--num_rollouts',type=int,default=5) 
@@ -62,7 +62,7 @@ parser.add_argument('--min_target',type=str2bool,default=False)
 
 parser.add_argument('--critic_lr',type=float,default=3e-4) 
 parser.add_argument('--actor_lr',type=float,default=3e-4) 
-parser.add_argument('--temperature',type=float,default=0.1) #0.01 made hopper 995 work
+parser.add_argument('--temperature',type=float,default=1.) #0.01 made hopper 995 work
 parser.add_argument('--use_layer_norm',type=str2bool,default=True)
 
 parser.add_argument('--momentum',type=float,default=0.9) 
@@ -75,13 +75,14 @@ parser.add_argument('--minibatch',type=str2bool,default=True)
 parser.add_argument('--buffer_size',type=int,default=51_200) 
 parser.add_argument('--policy_steps',type=int,default=5120) 
 parser.add_argument('--num_epochs',type=int,default=10) 
+parser.add_argument('--num_critic_updates',type=int,default=200)
 
 args = parser.parse_args()
 print(args)
 
 
 #jax.config.update("jax_disable_jit", True)
-config.update("jax_debug_nans", True)
+#config.update("jax_debug_nans", True)
 
 def train(args):
     

@@ -82,9 +82,9 @@ class SACAgent(flax.struct.PyTreeNode):
         return agent
     
     @jax.jit
-    def update_critics_seq(agent,transitions,n_batches=400):
+    def update_critics_seq(agent,transitions,n_batches=200):
         
-        # idxs = jax.random.choice(agent.rng,a=transitions['observations'].shape[0], shape=(n_batches,256), replace=True)
+        #idxs = jax.random.choice(agent.rng,a=transitions['observations'].shape[0], shape=(n_batches,256), replace=True)
         
 
         indexes = jnp.arange(transitions['observations'].shape[0])
@@ -333,7 +333,7 @@ def create_learner(
 
         critic_def = ensemblize(OriginalCritic,num_critics)(hidden_dims=critic_hidden_dims)
         critic_params = critic_def.init(critic_key, observations, actions)['params']
-        critic = TrainState.create(critic_def, critic_params, tx=optax.adam(learning_rate=critic_lr))
+        critic = TrainState.create(critic_def, critic_params, tx=optax.adam(learning_rate=critic_lr,b1=momentum,b2=0.99))
         
         
         v_def = ensemblize(OriginalV,num_critics)(hidden_dims=critic_hidden_dims)
@@ -348,7 +348,7 @@ def create_learner(
             optax.clip_by_global_norm(0.5), ## This is necessary to avoid exploding gradients due to numerical instabilities.
             optax.adam(learning_rate=actor_lr,b1=momentum,b2=0.99),
         )
-        temp = TrainState.create(temp_def, temp_params, tx=optax.adam(learning_rate=3e-4,b1=momentum)) ##placeholder
+        temp = TrainState.create(temp_def, temp_params, tx=optax.adam(learning_rate=3e-4,b1=momentum,b2=0.99)) ##placeholder
         actor = TrainState.create(actor_def, actor_params, tx=tx)
             
         if target_entropy is None:

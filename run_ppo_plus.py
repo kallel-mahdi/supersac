@@ -45,7 +45,7 @@ parser.add_argument('--seed',type=int,default=2025)
 
 parser.add_argument('--algo_name', type=str, default='superppo', help='the name of the RL algorithm')
 parser.add_argument('--project_name',type=str,default="single_exp") 
-parser.add_argument('--env_name',type=str,default="Hopper-v5") 
+parser.add_argument('--env_name',type=str,default="Ant-v5") 
 parser.add_argument('--max_steps',type=int,default=1_000_000) 
 parser.add_argument('--max_episode_steps',type=int,default=1000) 
 parser.add_argument('--num_rollouts',type=int,default=5) 
@@ -61,7 +61,8 @@ parser.add_argument('--min_target',type=str2bool,default=False)
 
 parser.add_argument('--critic_lr',type=float,default=3e-4) 
 parser.add_argument('--actor_lr',type=float,default=3e-4) 
-parser.add_argument('--temperature',type=float,default=0.1)
+parser.add_argument('--temp_lr',type=float,default=1e-4) 
+parser.add_argument('--temperature',type=float,default=0.05)
 parser.add_argument('--use_layer_norm',type=str2bool,default=True)
 parser.add_argument('--momentum',type=float,default=0.9) 
 
@@ -74,7 +75,6 @@ parser.add_argument('--buffer_size',type=int,default=51_200)
 parser.add_argument('--policy_steps',type=int,default=5120) 
 parser.add_argument('--num_epochs',type=int,default=10) 
 parser.add_argument('--num_critic_updates',type=int,default=200)
-parser.add_argument('--num_actor_updates',type=int,default=20) 
 
 args = parser.parse_args()
 print(args)
@@ -139,9 +139,10 @@ def train(args):
                     temperature=args.temperature,
                     actor_lr=args.actor_lr,
                     critic_lr=args.critic_lr,
+                    temp_lr=args.temp_lr,
                     momentum=args.momentum,
                     clipping_ratio=args.clipping_ratio,
-                    num_actor_updates=args.num_actor_updates,
+                    num_actor_updates=args.policy_steps//256,
                     actor_hidden_dims=(args.hidden_dims,args.hidden_dims),
                     critic_hidden_dims=(args.hidden_dims,args.hidden_dims),
                     use_layer_norm= args.use_layer_norm,

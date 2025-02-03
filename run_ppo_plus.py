@@ -45,12 +45,11 @@ parser.add_argument('--seed',type=int,default=2025)
 
 parser.add_argument('--algo_name', type=str, default='superppo', help='the name of the RL algorithm')
 parser.add_argument('--project_name',type=str,default="single_exp") 
-parser.add_argument('--env_name',type=str,default="Ant-v5") 
+parser.add_argument('--env_name',type=str,default="Hopper-v5") 
 parser.add_argument('--max_steps',type=int,default=1_000_000) 
 parser.add_argument('--max_episode_steps',type=int,default=1000) 
 parser.add_argument('--num_rollouts',type=int,default=5) 
 parser.add_argument('--gamma',type=float,default=0.995)
-parser.add_argument('--healthy_reward',type=float,default=1.) 
 parser.add_argument('--entropy_coeff',type=float,default=1.) 
 
 parser.add_argument('--num_critics',type=int,default=2)
@@ -62,11 +61,10 @@ parser.add_argument('--min_target',type=str2bool,default=False)
 
 parser.add_argument('--critic_lr',type=float,default=3e-4) 
 parser.add_argument('--actor_lr',type=float,default=3e-4) 
-parser.add_argument('--temperature',type=float,default=1.) #0.01 made hopper 995 work
+parser.add_argument('--temperature',type=float,default=0.1)
 parser.add_argument('--use_layer_norm',type=str2bool,default=True)
-
 parser.add_argument('--momentum',type=float,default=0.9) 
-parser.add_argument('--num_actor_updates',type=int,default=20) 
+
 parser.add_argument('--clipping_ratio',type=float,default=0.2) 
 parser.add_argument('--gae_lambda',type=float,default=0.5) 
 parser.add_argument('--hidden_dims',type=int,default=256) 
@@ -76,9 +74,12 @@ parser.add_argument('--buffer_size',type=int,default=51_200)
 parser.add_argument('--policy_steps',type=int,default=5120) 
 parser.add_argument('--num_epochs',type=int,default=10) 
 parser.add_argument('--num_critic_updates',type=int,default=200)
+parser.add_argument('--num_actor_updates',type=int,default=20) 
 
 args = parser.parse_args()
 print(args)
+
+if args.env_name == "Humanoid-v5": args.max_steps = 5_000_000
 
 
 #jax.config.update("jax_disable_jit", True)
@@ -86,11 +87,9 @@ print(args)
 
 def train(args):
     
-    eval_episodes=10
-    batch_size = 256
+
     max_steps = args.max_steps
-    start_steps = 0
-    log_interval = 10000
+    log_interval = 20000
     n_grads = 0
 
     wandb_config = {
@@ -99,17 +98,8 @@ def train(args):
         'hyperparam_dict':args.__dict__,
         }
     wandb_run = setup_wandb(**wandb_config)
-    
-    ### HalfCheetah does not have healthy_reward argument
-    if any (string in args.env_name for string in ["HalfCheetah","Pendulum","Swimmer"]):
-        env =gym.make(args.env_name, max_episode_steps=args.max_episode_steps)
-        
-        #env = EpisodeMonitor(env)
-    else:
-        print(f'env_name: {args.env_name}, max_episode_steps: {args.max_episode_steps}, healthy_reward: {args.healthy_reward}')
-        env = gym.make(args.env_name, max_episode_steps=args.max_episode_steps, healthy_reward=args.healthy_reward)
-        
-    
+   
+    env =gym.make(args.env_name, max_episode_steps=args.max_episode_steps)
     env = gym.wrappers.RecordEpisodeStatistics(env)
     eval_env = gym.wrappers.RecordEpisodeStatistics(gym.make(args.env_name,max_episode_steps=1000))
     
@@ -161,7 +151,6 @@ def train(args):
                     )
 
     exploration_metrics = dict()
-    obs,info = env.reset()    
     exploration_rng = jax.random.PRNGKey(0)
     i = 0
     unlogged_steps,cached_steps = 0,0
@@ -214,10 +203,10 @@ def train(args):
                 
                 if unlogged_steps >= log_interval:
                     
-                    _,_,policy_return,undisc_policy_return,num_steps = rollout_policy2(
+                    _,_,policy_return,undisc_policy_return,num_steps = rollout_policy(
                                                                     agent,eval_env,exploration_rng,
                                                                     None,None,eval=True,
-                                                                    discount = args.gamma,max_steps=10000)
+                                                                    discount = args.gamma,max_rollouts=10)
                     eval_metrics = {"policy_return": policy_return,"undisc_policy_return": undisc_policy_return}
                     print(eval_metrics)
                     
@@ -227,11 +216,6 @@ def train(args):
                     eval_step = i
                     wandb.log(eval_metrics, step=int(eval_step),commit=True)
                     unlogged_steps = 0
-            
-                if cached_steps >= int(1e6): 
-                    jax.clear_caches()
-                    cached_steps = 0
-                    print('clearing cache')
         
     wandb_run.finish()
 

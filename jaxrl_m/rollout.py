@@ -4,69 +4,70 @@ import chex
 import numpy as np 
 import jax.numpy as jnp
 
-
 def rollout_policy(agent,env,exploration_rng,
                    replay_buffer=None,actor_buffer=None,
-                   eval=False,num_rollouts=5,discount=0.99,max_length=5120):
+                   eval=False,discount=0.99,max_rollouts=10):
     
-    if actor_buffer is not None:
-        actor_buffer = actor_buffer.reset()
+    
+    
+    
+    
+    
+    n_steps,n_rollouts,disc,mask = 0,0,1.,1.
+    policy_returns,returns = [],[]
+    policy_return,undisc_return = 0.,0.
+    
+    if actor_buffer is not None: actor_buffer = actor_buffer.reset()
     
     obs,_ = env.reset()  
-    n_steps,n_rollouts,disc,mask = 0,0,1.,1.
-
-    policy_returns,returns = [],[]
     
-    while n_rollouts < num_rollouts:
+    while n_rollouts < max_rollouts:
         
-        if eval:
+        if eval:            
             action = agent.deterministic_action(obs)
             log_p,pre_action = 0.,action
         else:
             exploration_rng, key = jax.random.split(exploration_rng)
             action,log_p,pre_action = agent.sample_actions(obs,seed=exploration_rng)
-
+            
+        
         next_obs, reward, done, truncated, info = env.step(action)
+        
+        if "episode" in info.keys():
+            
+                returns.append(info["episode"]["r"])
+                n_rollouts+=1
+    
+        policy_return += reward * disc
         
         mask = float(not done)
 
         transition = dict(observations=obs,actions=action,
             rewards=reward,masks=mask,truncateds=truncated,next_observations=next_obs,discounts=disc,
             log_probs=log_p,pre_actions=pre_action)
-        
+
         if replay_buffer is not None:
             replay_buffer.add_transition(transition)
         
         if actor_buffer is not None:
             actor_buffer.add_transition(transition)
     
-    
-        policy_return += reward * disc
         obs = next_obs
         disc *= (discount*mask)
         n_steps += 1
         
-        if "episode" in info.keys():
-                
-                returns.append(info["episode"]["r"])
-                
-        
         if (done or truncated) :
-            
             policy_returns.append(policy_return)
             policy_return = 0.
             obs,_= env.reset()
-            n_rollouts += 1
             disc,mask = 1.,1.
             
-        
-        policy_return = np.array(policy_returns).mean()
-        undisc_policy_return = np.array(returns).mean()
-            
-
-    return replay_buffer,actor_buffer,policy_return,undisc_policy_return,n_steps
-
-
+    policy_returns = np.array(policy_returns)
+    policy_return = policy_returns.mean()
+    undisc_return = np.array(returns).mean()
+    
+  
+    return replay_buffer,actor_buffer,policy_return,undisc_return,n_steps
 
 
 def rollout_policy2(agent,env,exploration_rng,
@@ -174,11 +175,7 @@ def rollout_policy_lqr(agent,env,exploration_rng,
         if actor_buffer is not None:
             actor_buffer.add_transition(transition)
 
-        #print("n_rollouts",n_rollouts,"done",done)
-    
-        observations[max_length*n_rollouts+episode_step] = obs
-        disc_masks[max_length*n_rollouts+episode_step] = disc
-        rewards[max_length*n_rollouts+episode_step] = reward
+       
         
         obs = next_obs
         disc *= (discount*mask)
@@ -195,16 +192,10 @@ def rollout_policy_lqr(agent,env,exploration_rng,
             
             
     policy_return = policy_returns.mean()
-    variance = policy_returns.var()
     undisc_policy_return = rewards.sum()/num_rollouts
-    policy_rollout = PolicyRollout( policy_params=agent.actor.params,
-                                    policy_return=policy_return,
-                                    variance=variance,
-                                    observations=observations,
-                                    disc_masks=disc_masks,
-                                    num_rollouts=jnp.array(num_rollouts))
+   
     
-    return replay_buffer,actor_buffer,policy_rollout,policy_return,variance,undisc_policy_return,n_steps
+    return replay_buffer,actor_buffer,policy_return,undisc_policy_return,n_steps
 
 
 

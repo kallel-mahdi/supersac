@@ -82,16 +82,22 @@ class SACAgent(flax.struct.PyTreeNode):
         return agent
     
     @jax.jit
-    def update_critics_seq(agent,transitions,n_batches=200):
-        
-        #idxs = jax.random.choice(agent.rng,a=transitions['observations'].shape[0], shape=(n_batches,256), replace=True)
+    def update_critics_seq(agent,transitions):
         
 
+                
+        n_batches = transitions['observations'].shape[0]//256
+
+        
         indexes = jnp.arange(transitions['observations'].shape[0])
         indexes = jax.random.permutation(agent.rng, indexes)
         batch_size = indexes.shape[0] // n_batches
         idxs = indexes[:batch_size * n_batches].reshape((n_batches, batch_size))
-        #jax.debug.print('idxs',idxs.shape)
+
+        ### Or just sample  batches randomly
+        #idxs = jax.random.choice(agent.rng,a=transitions['observations'].shape[0], shape=(500,256), replace=True)
+
+
         batches = jax.vmap(lambda i: jax.tree.map(lambda x: x[i], transitions))(idxs)
         agent,batches = jax.lax.fori_loop(0,n_batches,body,(agent,batches))
         
@@ -333,7 +339,7 @@ def create_learner(
 
         critic_def = ensemblize(OriginalCritic,num_critics)(hidden_dims=critic_hidden_dims)
         critic_params = critic_def.init(critic_key, observations, actions)['params']
-        critic = TrainState.create(critic_def, critic_params, tx=optax.adam(learning_rate=critic_lr,b1=momentum,b2=0.99))
+        critic = TrainState.create(critic_def, critic_params, tx=optax.adam(learning_rate=critic_lr,b1=momentum))
         
         
         v_def = ensemblize(OriginalV,num_critics)(hidden_dims=critic_hidden_dims)
@@ -346,10 +352,10 @@ def create_learner(
         
         tx = optax.chain(
             optax.clip_by_global_norm(0.5), ## This is necessary to avoid exploding gradients due to numerical instabilities.
-            optax.adam(learning_rate=actor_lr,b1=momentum,b2=0.99),
+            optax.adam(learning_rate=actor_lr,b1=momentum),
         )
-        temp = TrainState.create(temp_def, temp_params, tx=optax.adam(learning_rate=3e-4,b1=momentum,b2=0.99)) ##placeholder
         actor = TrainState.create(actor_def, actor_params, tx=tx)
+        temp = TrainState.create(temp_def, temp_params, tx=optax.adam(learning_rate=3e-4,b1=momentum)) ##placeholder
             
         if target_entropy is None:
 

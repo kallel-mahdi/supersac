@@ -17,7 +17,7 @@ def str2bool(v):
 parser = argparse.ArgumentParser()
 parser.add_argument('--seed',type=int,default=42) 
 parser.add_argument('--env_name',type=str,default="Hopper-v5")
-parser.add_argument('--project_name',type=str,default="rlc_995_3") 
+parser.add_argument('--project_name',type=str,default="rlc_995_fix") 
 parser.add_argument('--gamma',type=float,default=0.995)
 parser.add_argument('--max_steps',type=int,default=1_000_000) 
 parser.add_argument('--num_rollouts',type=int,default=5) 
@@ -44,7 +44,7 @@ args = parser.parse_args()
 
 np.random.seed(42)
 seeds = list(np.random.randint(0,1e6,10))
-configs = itertools.product(seeds,[args.env_name],[args.project_name],
+configs = itertools.product(seeds,["Hopper-v5","Walker2d-v5","HalfCheetah-v5","Ant-v5","Humanoid-v5"],[args.project_name],
                             [args.gamma],[args.max_steps],[args.num_rollouts],
                             [args.num_critics],[args.adaptive_critics],[args.discount_entropy],[args.discount_actor],[args.buffer_size],
                             [args.max_episode_steps],[args.use_layer_norm],[args.momentum],[args.on_policy_data],[args.clipping_ratio])

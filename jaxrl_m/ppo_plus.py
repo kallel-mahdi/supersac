@@ -119,18 +119,19 @@ class SACAgent(flax.struct.PyTreeNode):
             
             # Define a function to update the cumulative advantage in a scan step
             def update_advantage(cumulative_advantage, delta_and_mask):
-                delta, trunc = delta_and_mask
+                delta, trunc,done = delta_and_mask
                 # Update advantage using GAE with truncation handling
-                cumulative_advantage = delta + gamma * lam * cumulative_advantage * (1 - trunc)
+                cumulative_advantage = delta + gamma * lam * (1-done) * (1 - trunc) * cumulative_advantage 
                 return cumulative_advantage, cumulative_advantage
 
             # Use lax.scan to accumulate the advantages in reverse order
             # Reverse deltas and truncations for the scan (scan works forward, but we want to process backwards)
             reversed_deltas = deltas[::-1]
             reversed_truncations = truncations[::-1]
+            reversed_dones = dones[::-1]
             
             # Scan will return the final cumulative advantage and the full sequence of advantages
-            _, advantages = lax.scan(update_advantage, 0.0, (reversed_deltas, reversed_truncations))
+            _, advantages = lax.scan(update_advantage, 0.0, (reversed_deltas, reversed_truncations,reversed_dones))
 
             # Reverse the advantages back to the original order
             advantages = advantages[::-1]

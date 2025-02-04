@@ -83,20 +83,17 @@ class SACAgent(flax.struct.PyTreeNode):
     
     @jax.jit
     def update_critics_seq(agent,transitions):
-        
-
                 
         n_batches = transitions['observations'].shape[0]//256
 
-        
         indexes = jnp.arange(transitions['observations'].shape[0])
         indexes = jax.random.permutation(agent.rng, indexes)
         batch_size = indexes.shape[0] // n_batches
         idxs = indexes[:batch_size * n_batches].reshape((n_batches, batch_size))
 
         ### Or just sample  batches randomly
-        #idxs = jax.random.choice(agent.rng,a=transitions['observations'].shape[0], shape=(500,256), replace=True)
-
+        # n_batches = transitions['observations'].shape[0]
+        # idxs = jax.random.choice(agent.rng,a=transitions['observations'].shape[0], shape=(n_batches,256), replace=True)
 
         batches = jax.vmap(lambda i: jax.tree.map(lambda x: x[i], transitions))(idxs)
         agent,batches = jax.lax.fori_loop(0,n_batches,body,(agent,batches))
@@ -109,8 +106,8 @@ class SACAgent(flax.struct.PyTreeNode):
         
         @jax.jit
         def compute_gae(rewards: jnp.ndarray, values: jnp.ndarray, next_values: jnp.ndarray, 
-                        dones: jnp.ndarray, truncations: jnp.ndarray, gamma: float = 0.995, 
-                        lam: float = 0.8) -> jnp.ndarray:
+                        dones: jnp.ndarray, truncations: jnp.ndarray, gamma: float, 
+                        lam: float) -> jnp.ndarray:
             # Compute deltas (TD residuals)
             
             
@@ -154,6 +151,8 @@ class SACAgent(flax.struct.PyTreeNode):
             adv = adv[idx]
             
             discounts,masks,logp = batch["discounts"],batch["masks"],batch["log_probs"]
+            
+            #jax.debug.print("🤯 HELLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLL{x} 🤯", x=discounts[:100])
             dist = agent.actor(batch["observations"],params=actor_params)
             pre_actions = batch["pre_actions"]
             pre_log_probs = dist.log_prob(pre_actions)
@@ -240,14 +239,23 @@ class SACAgent(flax.struct.PyTreeNode):
         # q = agent.critic(batch["observations"],batch["actions"]).mean(axis=0)
         # adv = q-tmp_v2 + agent.temp()*(-batch["log_probs"]-tmp_h)### This one worked
         
+        if agent.config["minibatch"]:
         
-        indexes = jnp.arange(adv.shape[0])
-        indexes = jax.random.permutation(new_rng, indexes)
-        batch_size = indexes.shape[0] // agent.config["num_actor_updates"]
-        index_batches = jnp.split(indexes[:batch_size * agent.config["num_actor_updates"]], agent.config["num_actor_updates"])
+            indexes = jnp.arange(adv.shape[0])
+            indexes = jax.random.permutation(new_rng, indexes)
+            batch_size = indexes.shape[0] // agent.config["num_actor_updates"]
+            index_batches = jnp.split(indexes[:batch_size * agent.config["num_actor_updates"]], agent.config["num_actor_updates"])
+        
+        else : index_batches = [jnp.arange(adv.shape[0]) for i in range(agent.config["num_actor_updates"])]
+            
+        #jax.debug.print("🤯 WAAAAAAAAAAAAAAAA{x} 🤯", x=jnp.array(index_batches).shape)
+        
+     
         
         for idx in index_batches:
-     
+            
+            if not agent.config['minibatch']: idx = jnp.arange(adv.shape[0])
+            
             new_actor, actor_info = agent.actor.apply_loss_fn(actor_loss_fn,True,adv,batch,idx)#adv
             new_temp, temp_info = agent.temp.apply_loss_fn(temp_loss_fn,True,actor_info['entropy'],agent.config['target_entropy'])
 

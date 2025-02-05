@@ -243,8 +243,9 @@ class SACAgent(flax.struct.PyTreeNode):
         
             indexes = jnp.arange(adv.shape[0])
             indexes = jax.random.permutation(new_rng, indexes)
-            batch_size = indexes.shape[0] // agent.config["num_actor_updates"]
-            index_batches = jnp.split(indexes[:batch_size * agent.config["num_actor_updates"]], agent.config["num_actor_updates"])
+            batch_size = 256
+            num_actor_updates = adv.shape[0] // batch_size
+            index_batches = jnp.split(indexes[:batch_size * num_actor_updates], num_actor_updates)
         
         else : index_batches = [jnp.arange(adv.shape[0]) for i in range(agent.config["num_actor_updates"])]
             

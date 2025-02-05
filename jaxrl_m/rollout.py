@@ -8,13 +8,8 @@ def rollout_policy(agent,env,exploration_rng,
                    replay_buffer=None,actor_buffer=None,
                    eval=False,discount=0.99,max_rollouts=10):
     
-    
-    
-    
-    
-    
     n_steps,n_rollouts,disc,mask = 0,0,1.,1.
-    policy_returns,returns = [],[]
+    policy_returns,undisc_returns = [],[]
     policy_return,undisc_return = 0.,0.
     
     if actor_buffer is not None: actor_buffer = actor_buffer.reset()
@@ -30,15 +25,12 @@ def rollout_policy(agent,env,exploration_rng,
             exploration_rng, key = jax.random.split(exploration_rng)
             action,log_p,pre_action = agent.sample_actions(obs,seed=exploration_rng)
             
-        
+        action = np.array(action)
         next_obs, reward, done, truncated, info = env.step(action)
-        
-        if "episode" in info.keys():
-            
-                returns.append(info["episode"]["r"])
-                n_rollouts+=1
+
     
         policy_return += reward * disc
+        undisc_return += reward
         
         mask = float(not done)
 
@@ -58,16 +50,18 @@ def rollout_policy(agent,env,exploration_rng,
         
         if (done or truncated) :
             policy_returns.append(policy_return)
+            undisc_returns.append(undisc_return)
             policy_return = 0.
+            undisc_return = 0.
             obs,_= env.reset()
             disc,mask = 1.,1.
+            n_rollouts+=1
             
-    policy_returns = np.array(policy_returns)
-    policy_return = policy_returns.mean()
-    undisc_return = np.array(returns).mean()
+    policy_return = np.array(policy_returns).mean()
+    undisc_return = np.array(undisc_returns).mean()
     
-  
     return replay_buffer,actor_buffer,policy_return,undisc_return,n_steps
+
 
 
 def rollout_policy2(agent,env,exploration_rng,
@@ -75,12 +69,9 @@ def rollout_policy2(agent,env,exploration_rng,
                    eval=False,discount=0.99,max_steps=5120):
     
     
-    
-    
-    
-    
+
     n_steps,n_rollouts,disc,mask = 0,0,1.,1.
-    policy_returns,returns = [],[]
+    policy_returns,undisc_returns = [],[]
     policy_return,undisc_return = 0.,0.
     
     if actor_buffer is not None: actor_buffer = actor_buffer.reset()
@@ -96,15 +87,12 @@ def rollout_policy2(agent,env,exploration_rng,
             exploration_rng, key = jax.random.split(exploration_rng)
             action,log_p,pre_action = agent.sample_actions(obs,seed=exploration_rng)
             
-        
+        action = np.array(action)
         next_obs, reward, done, truncated, info = env.step(action)
-        
-        if "episode" in info.keys():
-            
-                returns.append(info["episode"]["r"])
-                n_rollouts+=1
+
     
         policy_return += reward * disc
+        undisc_return += reward
         
         mask = float(not done)
 
@@ -124,13 +112,15 @@ def rollout_policy2(agent,env,exploration_rng,
         
         if (done or truncated) :
             policy_returns.append(policy_return)
+            undisc_returns.append(undisc_return)
             policy_return = 0.
+            undisc_return = 0.
             obs,_= env.reset()
             disc,mask = 1.,1.
+            n_rollouts+=1
             
-    policy_returns = np.array(policy_returns)
-    policy_return = policy_returns.mean()
-    undisc_return = np.array(returns).mean()
+    policy_return = np.array(policy_returns).mean()
+    undisc_return = np.array(undisc_returns).mean()
     
   
     return replay_buffer,actor_buffer,policy_return,undisc_return,n_steps

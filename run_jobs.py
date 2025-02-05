@@ -17,7 +17,7 @@ def str2bool(v):
 parser = argparse.ArgumentParser()
 parser.add_argument('--seed',type=int,default=42) 
 parser.add_argument('--env_name',type=str,default="Hopper-v5")
-parser.add_argument('--project_name',type=str,default="rlc_995_hope") 
+parser.add_argument('--project_name',type=str,default="rlc_995_bigass") 
 parser.add_argument('--gamma',type=float,default=0.995)
 parser.add_argument('--max_steps',type=int,default=1_000_000) 
 parser.add_argument('--num_rollouts',type=int,default=5) 
@@ -34,8 +34,8 @@ parser.add_argument('--momentum',type=float,default=0.9)
 
 
 parser.add_argument('--max_episode_steps',type=int,default=1000) 
-parser.add_argument('--clipping_ratio',type=float,default=0.2)
-parser.add_argument('--buffer_size',type=int,default=51_200) 
+parser.add_argument('--clipping_ratio',type=float,default=0.25)
+parser.add_argument('--buffer_size',type=int,default=102_400) 
 
 args = parser.parse_args()
 

@@ -28,7 +28,7 @@ from jaxrl_m.wandb import default_wandb_config, get_flag_dict, setup_wandb
 from jaxrl_m.ppo_plus import *
 from jaxrl_m.utils import *
 from jaxrl_m.normalize import *
-#from jaxrl_m.dmc import DMCGym
+from jaxrl_m.dmc import DMCGym
 
 #logging.basicConfig(level=logging.DEBUG)  # Ignore warnings and below (INFO, WARNING, etc.)
 
@@ -45,7 +45,7 @@ parser.add_argument('--seed',type=int,default=2025)
 
 parser.add_argument('--algo_name', type=str, default='superppo', help='the name of the RL algorithm')
 parser.add_argument('--project_name',type=str,default="single_exp") 
-parser.add_argument('--env_name',type=str,default="Hopper-v5") 
+parser.add_argument('--env_name',type=str,default="Walker2d-v5") 
 parser.add_argument('--max_steps',type=int,default=1_000_000) 
 parser.add_argument('--max_episode_steps',type=int,default=1000) 
 parser.add_argument('--num_rollouts',type=int,default=5) 
@@ -66,16 +66,17 @@ parser.add_argument('--temperature',type=float,default=0.05)
 parser.add_argument('--use_layer_norm',type=str2bool,default=True)
 parser.add_argument('--momentum',type=float,default=0.9) 
 
-parser.add_argument('--clipping_ratio',type=float,default=0.1) 
+parser.add_argument('--clipping_ratio',type=float,default=0.25) 
 parser.add_argument('--gae_lambda',type=float,default=0.5) 
 parser.add_argument('--hidden_dims',type=int,default=256) 
 parser.add_argument('--episode_based',type=str2bool,default=False) 
-parser.add_argument('--minibatch',type=str2bool,default=False) 
-parser.add_argument('--buffer_size',type=int,default=51_200) 
-parser.add_argument('--policy_steps',type=int,default=5120) 
+parser.add_argument('--minibatch',type=str2bool,default=True) 
+parser.add_argument('--buffer_size',type=int,default=102400) 
+parser.add_argument('--policy_steps',type=int,default=10240) 
 parser.add_argument('--num_epochs',type=int,default=10) 
 parser.add_argument('--num_critic_updates',type=int,default=200)
-parser.add_argument('--num_actor_updates',type=int,default=10)
+parser.add_argument('--num_actor_updates',type=int,default=40)
+parser.add_argument('--healthy_reward',type=float,default=0.5)
 
 args = parser.parse_args()
 print(args)
@@ -99,14 +100,22 @@ def train(args):
         'hyperparam_dict':args.__dict__,
         }
     wandb_run = setup_wandb(**wandb_config)
+    
+    
+    if 'HalfCheetah' in args.env_name or 'Pendulum' in args.env_name:
+        env = gym.wrappers.RecordEpisodeStatistics(gym.make(args.env_name, max_episode_steps=args.max_episode_steps))
+    else:
+        print(f'env_name: {args.env_name}, max_episode_steps: {args.max_episode_steps}, healthy_reward: {args.healthy_reward}')
+        env = gym.wrappers.RecordEpisodeStatistics(gym.make(args.env_name, max_episode_steps=args.max_episode_steps, healthy_reward=args.healthy_reward))
    
-    env =gym.make(args.env_name, max_episode_steps=args.max_episode_steps)
-    env = gym.wrappers.RecordEpisodeStatistics(env)
+    
+    #env = gym.wrappers.RecordEpisodeStatistics(gym.make(args.env_name, max_episode_steps=args.max_episode_steps))
+    
     eval_env = gym.wrappers.RecordEpisodeStatistics(gym.make(args.env_name,max_episode_steps=1000))
     
     
-    # env = DMCGym("cheetah","run")
-    # eval_env = DMCGym("cheetah","run")
+    # env = DMCGym("hopper","hop")
+    # eval_env = DMCGym("hopper","hop")
     
 
     example_transition = dict(

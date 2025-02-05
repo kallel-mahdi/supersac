@@ -92,7 +92,8 @@ class SACAgent(flax.struct.PyTreeNode):
         idxs = indexes[:batch_size * n_batches].reshape((n_batches, batch_size))
 
         ### Or just sample  batches randomly
-        # n_batches = transitions['observations'].shape[0]
+        #n_batches = transitions['observations'].shape[0]
+        # n_batches = 500
         # idxs = jax.random.choice(agent.rng,a=transitions['observations'].shape[0], shape=(n_batches,256), replace=True)
 
         batches = jax.vmap(lambda i: jax.tree.map(lambda x: x[i], transitions))(idxs)
@@ -217,28 +218,33 @@ class SACAgent(flax.struct.PyTreeNode):
             q_all = agent.critic(observations,actions)
             v = jnp.mean(q_all,axis=0)
             
-            return v,-log_p
+            return v,log_p
         
-        vs,hs = jax.vmap(evaluate,in_axes=(None,0))(observations,jax.random.split(curr_key,10))
+        if agent.config['gae_lambda'] > 0.:
         
-        tmp_v,tmp_h = jnp.mean(vs,axis=0),jnp.mean(hs,axis=0)
-        tmp_v += agent.temp()*tmp_h
-        v,next_v= tmp_v[:-1],tmp_v[1:]
-        
-        rewards = batch["rewards"]-agent.temp()*batch["log_probs"]
-        dones = jnp.bool(1-batch["masks"])
-        truncations = jnp.bool(batch["truncateds"])
-        
-        adv,_ = compute_gae(rewards.squeeze(),v.squeeze(),next_v.squeeze(),dones.squeeze(),truncations.squeeze(),
-                            gamma=agent.config['discount'],lam=agent.config['gae_lambda'])
-        adv = adv.reshape(-1)
-        #adv = (adv - jnp.mean(adv)) / (jnp.std(adv) + 1e-8)
-        
+            vs,hs = jax.vmap(evaluate,in_axes=(None,0))(observations,jax.random.split(curr_key,10))
+            
+            tmp_v,tmp_logp = jnp.mean(vs,axis=0),jnp.mean(hs,axis=0)
+            tmp_v -= agent.temp()*tmp_logp
+            v,next_v= tmp_v[:-1],tmp_v[1:]
+            
+            rewards = batch["rewards"]-agent.temp()*batch["log_probs"]
+            dones = jnp.bool(1-batch["masks"])
+            truncations = jnp.bool(batch["truncateds"])
+            
+            adv,_ = compute_gae(rewards.squeeze(),v.squeeze(),next_v.squeeze(),dones.squeeze(),truncations.squeeze(),
+                                gamma=agent.config['discount'],lam=agent.config['gae_lambda'])
+            adv = adv.reshape(-1)
 
-        ### Compute advantage for the fixed states AND actions
-        # q = agent.critic(batch["observations"],batch["actions"]).mean(axis=0)
-        # adv = q-tmp_v2 + agent.temp()*(-batch["log_probs"]-tmp_h)### This one worked
-        
+        else :   
+
+            ### Compute advantage for the fixed states AND actions
+            vs,hs = jax.vmap(evaluate,in_axes=(None,0))(batch["observations"],jax.random.split(curr_key,10))        
+            tmp_v,tmp_logp = jnp.mean(vs,axis=0),jnp.mean(hs,axis=0)
+            q = agent.critic(batch["observations"],batch["actions"]).mean(axis=0)
+            adv = (q-agent.temp()*batch["log_probs"]) - (tmp_v - agent.temp() *tmp_logp)### This one worked
+            adv = adv.reshape(-1)
+    
         if agent.config["minibatch"]:
         
             indexes = jnp.arange(adv.shape[0])

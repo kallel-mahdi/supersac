@@ -29,19 +29,19 @@ import jax.numpy as jnp
 ###############################
 
 
-###FOR TANH
-def default_init(scale: Optional[float] = jnp.sqrt(2.0)):
+# ###FOR TANH
+# def default_init(scale: Optional[float] = jnp.sqrt(2.0)):
 
-    return nn.initializers.orthogonal(scale)
+#     return nn.initializers.orthogonal(scale)
 
 
-# def default_init(scale: Optional[float] = 1.0):
-#     return nn.initializers.variance_scaling(scale, "fan_avg", "uniform")
+def default_init(scale: Optional[float] = 1.0):
+    return nn.initializers.variance_scaling(scale, "fan_avg", "uniform")
 
 
 class MLP(nn.Module):
     hidden_dims: Sequence[int]
-    activations: Callable[[jnp.ndarray], jnp.ndarray] = nn.tanh
+    activations: Callable[[jnp.ndarray], jnp.ndarray] = nn.silu
     activate_final: bool = False
     use_layer_norm: bool = False
     

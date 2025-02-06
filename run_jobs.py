@@ -17,14 +17,14 @@ def str2bool(v):
 parser = argparse.ArgumentParser()
 parser.add_argument('--seed',type=int,default=42) 
 parser.add_argument('--env_name',type=str,default="Hopper-v5")
-parser.add_argument('--project_name',type=str,default="rlc_995_fullbatch_silu_julia") 
-parser.add_argument('--gamma',type=float,default=0.995)
+parser.add_argument('--project_name',type=str,default="rlc_99_turbo") 
+parser.add_argument('--gamma',type=float,default=0.99)
 parser.add_argument('--max_steps',type=int,default=1_000_000) 
 parser.add_argument('--num_rollouts',type=int,default=5) 
 
 parser.add_argument('--num_critics',type=int,default=2) 
-parser.add_argument('--discount_entropy',type=str2bool,default=True)
-parser.add_argument('--discount_actor',type=str2bool,default=True) 
+parser.add_argument('--discount_entropy',type=str2bool,default=False)
+parser.add_argument('--discount_actor',type=str2bool,default=False) 
 
 parser.add_argument('--on_policy_data',type=str2bool,default=False) 
 parser.add_argument('--adaptive_critics',type=str2bool,default=False) 

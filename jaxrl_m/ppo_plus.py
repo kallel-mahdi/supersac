@@ -84,17 +84,17 @@ class SACAgent(flax.struct.PyTreeNode):
     @jax.jit
     def update_critics_seq(agent,transitions):
                 
-        n_batches = transitions['observations'].shape[0]//256
+        # n_batches = transitions['observations'].shape[0]//256
 
-        indexes = jnp.arange(transitions['observations'].shape[0])
-        indexes = jax.random.permutation(agent.rng, indexes)
-        batch_size = indexes.shape[0] // n_batches
-        idxs = indexes[:batch_size * n_batches].reshape((n_batches, batch_size))
+        # indexes = jnp.arange(transitions['observations'].shape[0])
+        # indexes = jax.random.permutation(agent.rng, indexes)
+        # batch_size = indexes.shape[0] // n_batches
+        # idxs = indexes[:batch_size * n_batches].reshape((n_batches, batch_size))
 
         ### Or just sample  batches randomly
-        #n_batches = transitions['observations'].shape[0]
-        # n_batches = 500
-        # idxs = jax.random.choice(agent.rng,a=transitions['observations'].shape[0], shape=(n_batches,256), replace=True)
+        n_batches = transitions['observations'].shape[0]
+        n_batches = 2000
+        idxs = jax.random.choice(agent.rng,a=transitions['observations'].shape[0], shape=(n_batches,256), replace=True)
 
         batches = jax.vmap(lambda i: jax.tree.map(lambda x: x[i], transitions))(idxs)
         agent,batches = jax.lax.fori_loop(0,n_batches,body,(agent,batches))
@@ -178,6 +178,7 @@ class SACAgent(flax.struct.PyTreeNode):
             actor_loss2 = masks*adv * jnp.clip(ratio, 1 - clip_coef, 1 + clip_coef)
 
             if agent.config['discount_actor']:
+                #jax.debug.print("🤯 HELLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLL{x} 🤯", x=discounts[:100])
                 actor_loss = -jnp.minimum(discounts*actor_loss1,discounts*actor_loss2).sum()/(discounts.sum())
             else : 
                 actor_loss = -jnp.minimum(actor_loss1,actor_loss2).mean()

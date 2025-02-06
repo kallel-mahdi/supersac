@@ -84,17 +84,17 @@ class SACAgent(flax.struct.PyTreeNode):
     @jax.jit
     def update_critics_seq(agent,transitions):
                 
-        # n_batches = transitions['observations'].shape[0]//256
+        n_batches = transitions['observations'].shape[0]//256
 
-        # indexes = jnp.arange(transitions['observations'].shape[0])
-        # indexes = jax.random.permutation(agent.rng, indexes)
-        # batch_size = indexes.shape[0] // n_batches
-        # idxs = indexes[:batch_size * n_batches].reshape((n_batches, batch_size))
+        indexes = jnp.arange(transitions['observations'].shape[0])
+        indexes = jax.random.permutation(agent.rng, indexes)
+        batch_size = indexes.shape[0] // n_batches
+        idxs = indexes[:batch_size * n_batches].reshape((n_batches, batch_size))
 
         ### Or just sample  batches randomly
-        n_batches = transitions['observations'].shape[0]
-        n_batches = 2000
-        idxs = jax.random.choice(agent.rng,a=transitions['observations'].shape[0], shape=(n_batches,256), replace=True)
+        # n_batches = transitions['observations'].shape[0]
+        # n_batches = 2000
+        # idxs = jax.random.choice(agent.rng,a=transitions['observations'].shape[0], shape=(n_batches,256), replace=True)
 
         batches = jax.vmap(lambda i: jax.tree.map(lambda x: x[i], transitions))(idxs)
         agent,batches = jax.lax.fori_loop(0,n_batches,body,(agent,batches))
@@ -334,6 +334,7 @@ def create_learner(
                 clipping_ratio,
                 actor_hidden_dims: Sequence[int],
                 critic_hidden_dims: Sequence[int],
+                activation_fn: str,
                 gae_lambda : float,
                 use_layer_norm : bool,
                 minibatch : bool = False,
@@ -344,6 +345,7 @@ def create_learner(
                 use_bias=True,
                 
                 
+                
             **kwargs):
 
         print('Extra kwargs:', kwargs)
@@ -351,16 +353,17 @@ def create_learner(
         rng = jax.random.PRNGKey(seed)
         rng, actor_key, critic_key = jax.random.split(rng, 3)
 
+        activations = nn.relu if activation_fn == 'relu' else nn.tanh
+
         action_dim = actions.shape[-1]
-        actor_def = Policy(actor_hidden_dims, action_dim=action_dim,use_bias=use_bias,
+        actor_def = Policy(actor_hidden_dims, action_dim=action_dim,activations=activations,
             state_dependent_std=state_dependent_std, tanh_squash_distribution=tanh_squash_distribution,use_layer_norm=use_layer_norm)
 
-        critic_def = ensemblize(OriginalCritic,num_critics)(hidden_dims=critic_hidden_dims)
+        critic_def = ensemblize(OriginalCritic,num_critics)(hidden_dims=critic_hidden_dims,use_layer_norm=use_layer_norm,activations=activations)
         critic_params = critic_def.init(critic_key, observations, actions)['params']
         critic = TrainState.create(critic_def, critic_params, tx=optax.adam(learning_rate=critic_lr,b1=momentum))
-        
-        
-        v_def = ensemblize(OriginalV,num_critics)(hidden_dims=critic_hidden_dims)
+          
+        v_def = ensemblize(OriginalV,num_critics)(hidden_dims=critic_hidden_dims,use_layer_norm=use_layer_norm,activations=activations)
         v_params = v_def.init(critic_key, observations, actions)['params']
         v = TrainState.create(v_def, v_params, tx=optax.adam(learning_rate=critic_lr))
 

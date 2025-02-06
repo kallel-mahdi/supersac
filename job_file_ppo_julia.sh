@@ -1,6 +1,6 @@
 #!/bin/bash
 #SBATCH -J StandardJob           # Name your job
-#SBATCH --time=2:30:00           # Time limit in the form hh:mm:ss
+#SBATCH --time=01:00:00           # Time limit in the form hh:mm:ss
 #SBATCH -c 2                     # We want to use 2 cores
 #SBATCH --mem=2G                 # Job needs 2GB of memory (default!)
 #SBATCH -p standard              # Select standard partion
@@ -14,6 +14,5 @@ unset SLURM_EXPORT_ENV
 export HTTPS_PROXY=http://proxy:80
 export WANDB_API_KEY=28996bd59f1ba2c5a8c3f2cc23d8673c327ae230
 module load python/3.9-anaconda
-
 srun .venv3/bin/python run_ppo.py "$@"
 

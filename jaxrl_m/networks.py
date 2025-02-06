@@ -30,28 +30,27 @@ import jax.numpy as jnp
 
 
 # ###FOR TANH
-def default_init(scale: Optional[float] = jnp.sqrt(2.0)):
-
+def tanh_init(scale: Optional[float] = jnp.sqrt(2.0)):
     return nn.initializers.orthogonal(scale)
 
 
-# def default_init(scale: Optional[float] = 1.0):
-#     return nn.initializers.variance_scaling(scale, "fan_avg", "uniform")
+def relu_init(scale: Optional[float] = 1.0):
+    return nn.initializers.variance_scaling(scale, "fan_avg", "uniform")
 
 
 class MLP(nn.Module):
     hidden_dims: Sequence[int]
-    activations: Callable[[jnp.ndarray], jnp.ndarray] = nn.tanh
-    activate_final: bool = False
-    use_layer_norm: bool = False
-    
+    activations: Callable[[jnp.ndarray], jnp.ndarray] 
+    use_layer_norm: bool
+    activate_final: bool
 
     @nn.compact
-    def __call__(self, x: jnp.ndarray,train=False) -> jnp.ndarray:
-
+    def __call__(self, x: jnp.ndarray, train=False) -> jnp.ndarray:
         for i, size in enumerate(self.hidden_dims):
             
-            x = nn.Dense(size, kernel_init=default_init())(x)
+            kernel_init = tanh_init() if self.activations == nn.tanh else relu_init()
+
+            x = nn.Dense(size, kernel_init=kernel_init,use_bias=True)(x)
 
             if i + 1 < len(self.hidden_dims) or self.activate_final:
                 if self.use_layer_norm:
@@ -62,17 +61,17 @@ class MLP(nn.Module):
 
 
 
-
 class Critic(nn.Module):
     hidden_dims: Sequence[int]
-    use_layer_norm: bool = True
+    use_layer_norm: bool
+    activations: Callable[[jnp.ndarray], jnp.ndarray]
     scale_final: Optional[float] = None
 
     @nn.compact
     def __call__(self, observations: jnp.ndarray, actions: jnp.ndarray,
                 *args,**kwargs) -> jnp.ndarray:
         inputs = jnp.concatenate([observations, actions], -1)
-        critic = MLP((*self.hidden_dims, 2),
+        critic = MLP((*self.hidden_dims, 2),activations=self.activations,
                      use_layer_norm=self.use_layer_norm)(inputs,*args, **kwargs)
         
         return critic[:,0] , critic[:,1]
@@ -81,7 +80,8 @@ class Critic(nn.Module):
 
 class OriginalCritic(nn.Module):
     hidden_dims: Sequence[int]
-    use_layer_norm: bool = True
+    use_layer_norm: bool 
+    activations: Callable[[jnp.ndarray], jnp.ndarray]
     scale_final: Optional[float] = None
 
     @nn.compact
@@ -89,27 +89,32 @@ class OriginalCritic(nn.Module):
                 *args,**kwargs) -> jnp.ndarray:
         inputs = jnp.concatenate([observations, actions], -1)
         intermediate = MLP(self.hidden_dims,activate_final=True,
-                     use_layer_norm=self.use_layer_norm)(inputs,*args, **kwargs)
+                     use_layer_norm=self.use_layer_norm,activations=self.activations)(inputs,*args, **kwargs)
         
         self.sow('intermediates', 'features', intermediate)
-        Q = nn.Dense(1, kernel_init=default_init())(intermediate)
+
+        kernel_init = tanh_init() if self.activations == nn.tanh else relu_init()
+        Q = nn.Dense(1, kernel_init=kernel_init)(intermediate)
         
         return jnp.squeeze(Q, -1)
     
     
 class OriginalV(nn.Module):
     hidden_dims: Sequence[int]
-    use_layer_norm: bool = True
+    use_layer_norm: bool
+    activations: Callable[[jnp.ndarray], jnp.ndarray]
     scale_final: Optional[float] = None
 
     @nn.compact
     def __call__(self, observations: jnp.ndarray,*args,**kwargs) -> jnp.ndarray:
         
-        intermediate = MLP(self.hidden_dims,activate_final=True,
+        intermediate = MLP(self.hidden_dims,activate_final=True,activations=self.activations,
                      use_layer_norm=self.use_layer_norm)(observations,*args, **kwargs)
         
         self.sow('intermediates', 'features', intermediate)
-        Q = nn.Dense(1, kernel_init=default_init())(intermediate)
+
+        kernel_init = tanh_init() if self.activations == nn.tanh else relu_init()
+        Q = nn.Dense(1, kernel_init=kernel_init)(intermediate)
         
         return jnp.squeeze(Q, -1)
 
@@ -140,13 +145,16 @@ def ensemblize(cls, num_qs, out_axes=0, **kwargs):
 class Policy(nn.Module):
     hidden_dims: Sequence[int]
     action_dim: int
+   
+    use_layer_norm : bool
+    activations: Callable[[jnp.ndarray], jnp.ndarray]
+    tanh_squash_distribution: bool 
+    final_fc_init_scale: float = 1e-2
     log_std_min: Optional[float] = -10
     log_std_max: Optional[float] = 2
-    tanh_squash_distribution: bool = True
     state_dependent_std: bool = True
-    use_bias : bool = True
-    use_layer_norm : bool = True,
-    final_fc_init_scale: float = 1e-2
+
+    
 
     @nn.compact
     def __call__(
@@ -156,14 +164,17 @@ class Policy(nn.Module):
             self.hidden_dims,
             activate_final=True,
             use_layer_norm=self.use_layer_norm,
+            activations=self.activations,
         )(observations)
 
+        kernel_init = tanh_init if self.activations == nn.tanh else relu_init
+
         means = nn.Dense(
-            self.action_dim, kernel_init=default_init(self.final_fc_init_scale),use_bias=self.use_bias,name="means"
+            self.action_dim, kernel_init=kernel_init(self.final_fc_init_scale),use_bias=True,name="means"
         )(outputs)
         if self.state_dependent_std:
             log_stds = nn.Dense(
-                self.action_dim, kernel_init=default_init(self.final_fc_init_scale),use_bias=self.use_bias,name="log_stds"
+                self.action_dim, kernel_init=kernel_init(self.final_fc_init_scale),use_bias=True,name="log_stds"
             )(outputs)
         else:
             log_stds = self.param("log_stds", jax.nn.initializers.constant(-4.6), (self.action_dim,))

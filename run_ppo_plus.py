@@ -35,6 +35,7 @@ from jaxrl_m.dmc import DMCGym
 
 # Set env variables
 os.environ["WANDB_API_KEY"]="28996bd59f1ba2c5a8c3f2cc23d8673c327ae230"
+os.environ["WANDB__SERVICE_WAIT"] = str(1800)
 os.environ['PYTHONHASHSEED'] = '1'
 os.environ['TF_CUDNN_DETERMINISTIC'] = '1'
 
@@ -45,7 +46,7 @@ parser.add_argument('--seed',type=int,default=2025)
 
 parser.add_argument('--algo_name', type=str, default='superppo', help='the name of the RL algorithm')
 parser.add_argument('--project_name',type=str,default="single_exp") 
-parser.add_argument('--env_name',type=str,default="Hopper-v5") 
+parser.add_argument('--env_name',type=str,default="HalfCheetah-v5") 
 parser.add_argument('--max_steps',type=int,default=1_000_000) 
 parser.add_argument('--max_episode_steps',type=int,default=1000) 
 parser.add_argument('--num_rollouts',type=int,default=5) 
@@ -62,12 +63,12 @@ parser.add_argument('--min_target',type=str2bool,default=False)
 parser.add_argument('--critic_lr',type=float,default=3e-4) 
 parser.add_argument('--actor_lr',type=float,default=3e-4) 
 parser.add_argument('--temp_lr',type=float,default=3e-4) 
-parser.add_argument('--temperature',type=float,default=0.1)
+parser.add_argument('--temperature',type=float,default=0.05)
 parser.add_argument('--use_layer_norm',type=str2bool,default=True)
 parser.add_argument('--momentum',type=float,default=0.9) 
 
-parser.add_argument('--clipping_ratio',type=float,default=0.1) 
-parser.add_argument('--gae_lambda',type=float,default=0.) 
+parser.add_argument('--clipping_ratio',type=float,default=0.2) 
+parser.add_argument('--gae_lambda',type=float,default=0.5) 
 parser.add_argument('--hidden_dims',type=int,default=256) 
 parser.add_argument('--episode_based',type=str2bool,default=False) 
 parser.add_argument('--minibatch',type=str2bool,default=False) 
@@ -75,7 +76,7 @@ parser.add_argument('--buffer_size',type=int,default=51200)
 parser.add_argument('--policy_steps',type=int,default=5120) 
 parser.add_argument('--num_epochs',type=int,default=10) 
 parser.add_argument('--num_critic_updates',type=int,default=200)
-parser.add_argument('--num_actor_updates',type=int,default=10)
+parser.add_argument('--num_actor_updates',type=int,default=1)
 parser.add_argument('--healthy_reward',type=float,default=1.)
 
 args = parser.parse_args()

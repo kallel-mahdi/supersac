@@ -363,7 +363,7 @@ def create_learner(
 
         critic_def = ensemblize(OriginalCritic,num_critics)(hidden_dims=critic_hidden_dims,use_layer_norm=use_layer_norm,activations=activations)
         critic_params = critic_def.init(critic_key, observations, actions)['params']
-        critic = TrainState.create(critic_def, critic_params, tx=optax.adam(learning_rate=critic_lr,b1=momentum))
+        critic = TrainState.create(critic_def, critic_params, tx=optax.adam(learning_rate=critic_lr))
           
         v_def = ensemblize(OriginalV,num_critics)(hidden_dims=critic_hidden_dims,use_layer_norm=use_layer_norm,activations=activations)
         v_params = v_def.init(critic_key, observations, actions)['params']
@@ -378,7 +378,8 @@ def create_learner(
             optax.adam(learning_rate=actor_lr,b1=momentum,b2=b2),
         )
         actor = TrainState.create(actor_def, actor_params, tx=tx)
-        temp = TrainState.create(temp_def, temp_params, tx=optax.adam(learning_rate=temp_lr,b1=momentum,b2=b2)) ##placeholder
+        #temp = TrainState.create(temp_def, temp_params, tx=optax.adam(learning_rate=temp_lr,b1=momentum,b2=b2)) ##placeholder
+        temp = TrainState.create(temp_def, temp_params, tx=optax.adam(learning_rate=temp_lr)) ##placeholder
             
         if target_entropy is None:
 

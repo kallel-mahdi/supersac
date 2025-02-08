@@ -87,6 +87,8 @@ if args.env_name == "Humanoid-v5": args.max_steps = 5_000_000
 
 #jax.config.update("jax_disable_jit", True)
 #config.update("jax_debug_nans", True)
+config.update("jax_enable_x64", False)
+config.update("jax_default_matmul_precision", "highest")
 
 def train(args):
     

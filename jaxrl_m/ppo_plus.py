@@ -354,9 +354,10 @@ def create_learner(
         rng, actor_key, critic_key = jax.random.split(rng, 3)
 
         activations = nn.relu if activation_fn == 'relu' else nn.tanh
+        final_fc_init_scale = 1. if activation_fn == 'relu' else 1e-2
 
         action_dim = actions.shape[-1]
-        actor_def = Policy(actor_hidden_dims, action_dim=action_dim,activations=activations,
+        actor_def = Policy(actor_hidden_dims, action_dim=action_dim,activations=activations,final_fc_init_scale=final_fc_init_scale,
             state_dependent_std=state_dependent_std, tanh_squash_distribution=tanh_squash_distribution,use_layer_norm=use_layer_norm)
 
         critic_def = ensemblize(OriginalCritic,num_critics)(hidden_dims=critic_hidden_dims,use_layer_norm=use_layer_norm,activations=activations)
@@ -373,10 +374,10 @@ def create_learner(
         
         tx = optax.chain(
             optax.clip_by_global_norm(0.5), ## This is necessary to avoid exploding gradients due to numerical instabilities.
-            optax.adam(learning_rate=actor_lr,b1=momentum),
+            optax.adam(learning_rate=actor_lr,b1=momentum,b2=0.5),
         )
         actor = TrainState.create(actor_def, actor_params, tx=tx)
-        temp = TrainState.create(temp_def, temp_params, tx=optax.adam(learning_rate=temp_lr,b1=momentum)) ##placeholder
+        temp = TrainState.create(temp_def, temp_params, tx=optax.adam(learning_rate=temp_lr,b1=momentum,b2=0.5)) ##placeholder
             
         if target_entropy is None:
 

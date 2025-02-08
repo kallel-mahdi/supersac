@@ -326,6 +326,7 @@ def create_learner(
                 adaptive_critics,
                 entropy_coeff,
                 momentum,
+                b2,
                 actor_lr,
                 critic_lr,
                 temp_lr,
@@ -374,10 +375,10 @@ def create_learner(
         
         tx = optax.chain(
             optax.clip_by_global_norm(0.5), ## This is necessary to avoid exploding gradients due to numerical instabilities.
-            optax.adam(learning_rate=actor_lr,b1=momentum,b2=0.5),
+            optax.adam(learning_rate=actor_lr,b1=momentum,b2=b2),
         )
         actor = TrainState.create(actor_def, actor_params, tx=tx)
-        temp = TrainState.create(temp_def, temp_params, tx=optax.adam(learning_rate=temp_lr,b1=momentum,b2=0.5)) ##placeholder
+        temp = TrainState.create(temp_def, temp_params, tx=optax.adam(learning_rate=temp_lr,b1=momentum,b2=b2)) ##placeholder
             
         if target_entropy is None:
 

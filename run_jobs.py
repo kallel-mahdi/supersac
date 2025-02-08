@@ -15,9 +15,9 @@ def str2bool(v):
     
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--seed',type=int,default=42) 
+parser.add_argument('--seed',type=int,default=21) 
 parser.add_argument('--env_name',type=str,default="Hopper-v5")
-parser.add_argument('--project_name',type=str,default="rlc_995_semifinal") 
+parser.add_argument('--project_name',type=str,default="rlc_995_b2_final") 
 
 parser.add_argument('--num_critics',type=int,default=2) 
 parser.add_argument('--discount_entropy',type=str2bool,default=True)
@@ -33,8 +33,8 @@ parser.add_argument('--max_episode_steps',type=int,default=512)
 parser.add_argument('--clipping_ratio',type=float,default=0.2)
 
 parser.add_argument('--gamma',type=float,default=0.995)
-parser.add_argument('--policy_steps',type=int,default=4096) 
-parser.add_argument('--buffer_size',type=int,default=40960) 
+parser.add_argument('--policy_steps',type=int,default=5120) 
+parser.add_argument('--buffer_size',type=int,default=51200) 
 parser.add_argument('--max_steps',type=int,default=1_000_000) 
 
 args = parser.parse_args()

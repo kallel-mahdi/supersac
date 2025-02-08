@@ -63,16 +63,17 @@ parser.add_argument('--critic_lr',type=float,default=3e-4)
 parser.add_argument('--actor_lr',type=float,default=3e-4) 
 parser.add_argument('--temp_lr',type=float,default=3e-4) 
 parser.add_argument('--temperature',type=float,default=0.05)
-parser.add_argument('--use_layer_norm',type=str2bool,default=False)
-parser.add_argument('--momentum',type=float,default=0.9) 
+parser.add_argument('--use_layer_norm',type=str2bool,default=True)
+parser.add_argument('--momentum',type=float,default=0.) 
+parser.add_argument('--b2',type=float,default=0.5) 
 
 parser.add_argument('--clipping_ratio',type=float,default=0.2) 
 parser.add_argument('--gae_lambda',type=float,default=0.5) 
 parser.add_argument('--hidden_dims',type=int,default=256) 
 parser.add_argument('--episode_based',type=str2bool,default=False) 
 parser.add_argument('--minibatch',type=str2bool,default=True) 
-parser.add_argument('--buffer_size',type=int,default=40960) 
-parser.add_argument('--policy_steps',type=int,default=4096) 
+parser.add_argument('--buffer_size',type=int,default=51200) 
+parser.add_argument('--policy_steps',type=int,default=5120) 
 parser.add_argument('--num_epochs',type=int,default=10) 
 parser.add_argument('--num_critic_updates',type=int,default=200)
 parser.add_argument('--num_actor_updates',type=int,default=10)
@@ -87,8 +88,8 @@ if args.env_name == "Humanoid-v5": args.max_steps = 5_000_000
 
 #jax.config.update("jax_disable_jit", True)
 #config.update("jax_debug_nans", True)
-config.update("jax_enable_x64", False)
-config.update("jax_default_matmul_precision", "highest")
+#config.update("jax_enable_x64", False)
+#config.update("jax_default_matmul_precision", "highest")
 
 def train(args):
     
@@ -154,6 +155,7 @@ def train(args):
                     critic_lr=args.critic_lr,
                     temp_lr=args.temp_lr,
                     momentum=args.momentum,
+                    b2=args.b2,
                     clipping_ratio=args.clipping_ratio,
                     num_actor_updates=args.num_actor_updates,
                     actor_hidden_dims=(args.hidden_dims,args.hidden_dims),

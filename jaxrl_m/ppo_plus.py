@@ -380,7 +380,7 @@ def create_learner(
         )
         actor = TrainState.create(actor_def, actor_params, tx=tx)
         #temp = TrainState.create(temp_def, temp_params, tx=optax.adam(learning_rate=temp_lr,b1=momentum,b2=b2)) ##placeholder
-        temp = TrainState.create(temp_def, temp_params, tx=optax.adam(learning_rate=temp_lr)) ##placeholder
+        temp = TrainState.create(temp_def, temp_params, tx=optax.adam(learning_rate=temp_lr,b1=momentum,b2=b2)) ##placeholder
             
         if target_entropy is None:
 

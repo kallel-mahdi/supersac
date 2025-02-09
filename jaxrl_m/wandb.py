@@ -127,6 +127,7 @@ def setup_wandb(
         settings=wandb.Settings(
             start_method="thread",
             _disable_stats=False,
+            init_timeout=1800,
         ),
         mode="offline" if offline else "online",
         save_code=True,

@@ -214,8 +214,7 @@ def create_learner(
 def train():
 
     #FLAGS = flags.FLAGS
-    env_name='Walker2d-v5'
-    seed=np.random.choice(1000000)
+    seed=args.seed
     eval_episodes=10
     batch_size = 256
     max_steps = int(1e6)
@@ -227,14 +226,12 @@ def train():
     wandb_config.update({
         'project': 'sac_jax',
         'group': 'sac_test',
-        'name': f'sac_{env_name}',
-        'seed':args.seed,
-        'env_name':args.env_name,
+        'name': f'sac_{args.env_name}',
     })
 
 
-    env = EpisodeMonitor(gym.make(env_name))
-    eval_env = EpisodeMonitor(gym.make(env_name))
+    env = EpisodeMonitor(gym.make(args.env_name))
+    eval_env = EpisodeMonitor(gym.make(args.env_name))
     wandb_run = setup_wandb(**wandb_config,hyperparam_dict={})
 
     example_transition = dict(
@@ -248,7 +245,7 @@ def train():
     replay_buffer = ReplayBuffer.create(example_transition, size=int(1e6))
     placeholder = ReplayBuffer.create(example_transition, size=int(1e6))
 
-    agent = create_learner(seed,
+    agent = create_learner(args.seed,
                     example_transition['observations'][None],
                     example_transition['actions'][None],
                     max_steps=max_steps,
@@ -257,7 +254,7 @@ def train():
 
     exploration_metrics = dict()
     obs,info = env.reset()    
-    exploration_rng = jax.random.PRNGKey(0)
+    exploration_rng = jax.random.PRNGKey(args.seed)
 
     for i in tqdm.tqdm(range(1, max_steps + 1),
                         smoothing=0.1,
@@ -319,7 +316,6 @@ def train():
             
         
             wandb.log(eval_metrics, step=int(i),commit=True)
-            #wandb.log(eval_metrics, step=i)
 
 
         

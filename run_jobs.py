@@ -17,7 +17,7 @@ def str2bool(v):
 parser = argparse.ArgumentParser()
 parser.add_argument('--seed',type=int,default=42) 
 parser.add_argument('--env_name',type=str,default="Hopper-v5")
-parser.add_argument('--project_name',type=str,default="rlc_995_b2_dance") 
+parser.add_argument('--project_name',type=str,default="rlc_995_const_temp") 
 
 parser.add_argument('--num_critics',type=int,default=2) 
 parser.add_argument('--discount_entropy',type=str2bool,default=True)
@@ -28,23 +28,23 @@ parser.add_argument('--activation_fn',type=str,default="tanh")
 parser.add_argument('--min_target',type=str2bool,default=False) 
 parser.add_argument('--use_layer_norm',type=bool,default=True) 
 parser.add_argument('--momentum',type=float,default=0.) 
+parser.add_argument('--b2',type=float,default=0.9) 
 
 parser.add_argument('--max_episode_steps',type=int,default=1000) 
-parser.add_argument('--clipping_ratio',type=float,default=0.2)
+parser.add_argument('--clipping_ratio',type=float,default=0.25)
 
 parser.add_argument('--gamma',type=float,default=0.995)
 parser.add_argument('--policy_steps',type=int,default=5120) 
 parser.add_argument('--buffer_size',type=int,default=51200) 
-parser.add_argument('--max_steps',type=int,default=1_000_000) 
 
 args = parser.parse_args()
 
 ##############################
 
 np.random.seed(args.seed)
-seeds = list(np.random.randint(0,1e6,5))
+seeds = list(np.random.randint(0,1e6,10))
 configs = itertools.product(seeds,["Hopper-v5","Walker2d-v5","HalfCheetah-v5","Ant-v5"],[args.project_name],
-                            [args.gamma],[args.max_steps],[args.policy_steps],
+                            [args.gamma],[args.b2],[args.policy_steps],
                             [args.num_critics],[args.activation_fn],[args.discount_entropy],[args.discount_actor],[args.buffer_size],
                             [args.max_episode_steps],[args.use_layer_norm],[args.momentum],[args.on_policy_data],[args.clipping_ratio])
             

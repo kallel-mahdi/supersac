@@ -46,7 +46,7 @@ parser.add_argument('--seed',type=int,default=2025)
 
 parser.add_argument('--algo_name', type=str, default='superppo', help='the name of the RL algorithm')
 parser.add_argument('--project_name',type=str,default="single_exp") 
-parser.add_argument('--env_name',type=str,default="HalfCheetah-v5") 
+parser.add_argument('--env_name',type=str,default="Swimmer-v5") 
 parser.add_argument('--max_steps',type=int,default=1_000_000) 
 parser.add_argument('--max_episode_steps',type=int,default=1000) 
 parser.add_argument('--gamma',type=float,default=0.995)
@@ -61,13 +61,13 @@ parser.add_argument('--min_target',type=str2bool,default=False)
 
 parser.add_argument('--critic_lr',type=float,default=3e-4) 
 parser.add_argument('--actor_lr',type=float,default=3e-4) 
-parser.add_argument('--temp_lr',type=float,default=3e-4) 
+parser.add_argument('--temp_lr',type=float,default=3e-10) 
 parser.add_argument('--temperature',type=float,default=0.05)
 parser.add_argument('--use_layer_norm',type=str2bool,default=True)
 parser.add_argument('--momentum',type=float,default=0.) 
-parser.add_argument('--b2',type=float,default=0.5) 
+parser.add_argument('--b2',type=float,default=0.9) 
 
-parser.add_argument('--clipping_ratio',type=float,default=0.2) 
+parser.add_argument('--clipping_ratio',type=float,default=0.25) 
 parser.add_argument('--gae_lambda',type=float,default=0.5) 
 parser.add_argument('--hidden_dims',type=int,default=256) 
 parser.add_argument('--episode_based',type=str2bool,default=False) 
@@ -76,7 +76,7 @@ parser.add_argument('--buffer_size',type=int,default=51200)
 parser.add_argument('--policy_steps',type=int,default=5120) 
 parser.add_argument('--num_epochs',type=int,default=10) 
 parser.add_argument('--num_critic_updates',type=int,default=200)
-parser.add_argument('--num_actor_updates',type=int,default=10)
+parser.add_argument('--num_actor_updates',type=int,default=1)
 parser.add_argument('--healthy_reward',type=float,default=1.)
 parser.add_argument('--activation_fn',type=str,default='tanh')
 
@@ -87,9 +87,9 @@ if args.env_name == "Humanoid-v5": args.max_steps = 5_000_000
 
 
 #jax.config.update("jax_disable_jit", True)
-#config.update("jax_debug_nans", True)
-#config.update("jax_enable_x64", False)
-#config.update("jax_default_matmul_precision", "highest")
+# config.update("jax_debug_nans", True)
+# config.update("jax_default_matmul_precision", "highest")
+#config.update("jax_log_compiles", True)
 
 def train(args):
     
@@ -106,14 +106,14 @@ def train(args):
     wandb_run = setup_wandb(**wandb_config)
     
     
-    if 'HalfCheetah' in args.env_name or 'Pendulum' in args.env_name:
-        env = gym.wrappers.RecordEpisodeStatistics(gym.make(args.env_name, max_episode_steps=args.max_episode_steps))
-    else:
-        print(f'env_name: {args.env_name}, max_episode_steps: {args.max_episode_steps}, healthy_reward: {args.healthy_reward}')
-        env = gym.wrappers.RecordEpisodeStatistics(gym.make(args.env_name, max_episode_steps=args.max_episode_steps, healthy_reward=args.healthy_reward))
+    # if 'HalfCheetah' in args.env_name or 'Pendulum' in args.env_name:
+    #     env = gym.wrappers.RecordEpisodeStatistics(gym.make(args.env_name, max_episode_steps=args.max_episode_steps))
+    # else:
+    #     print(f'env_name: {args.env_name}, max_episode_steps: {args.max_episode_steps}, healthy_reward: {args.healthy_reward}')
+    #     env = gym.wrappers.RecordEpisodeStatistics(gym.make(args.env_name, max_episode_steps=args.max_episode_steps, healthy_reward=args.healthy_reward))
    
     
-    #env = gym.wrappers.RecordEpisodeStatistics(gym.make(args.env_name, max_episode_steps=args.max_episode_steps))
+    env = gym.wrappers.RecordEpisodeStatistics(gym.make(args.env_name, max_episode_steps=args.max_episode_steps))
     
     eval_env = gym.wrappers.RecordEpisodeStatistics(gym.make(args.env_name,max_episode_steps=1000))
     

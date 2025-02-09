@@ -362,6 +362,7 @@ def create_learner(
             state_dependent_std=state_dependent_std, tanh_squash_distribution=tanh_squash_distribution,use_layer_norm=use_layer_norm)
 
         critic_def = ensemblize(OriginalCritic,num_critics)(hidden_dims=critic_hidden_dims,use_layer_norm=use_layer_norm,activations=activations)
+        #critic_params = critic_def.init(critic_key, observations, actions)['params']
         critic_params = critic_def.init(critic_key, observations, actions)['params']
         critic = TrainState.create(critic_def, critic_params, tx=optax.adam(learning_rate=critic_lr))
           

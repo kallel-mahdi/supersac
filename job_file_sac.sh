@@ -10,11 +10,3 @@ export HTTPS_PROXY=http://proxy:80
 export WANDB_API_KEY=28996bd59f1ba2c5a8c3f2cc23d8673c327ae230
 module load python/3.12-conda cuda cudnn
 srun .venv2/bin/python run_sac.py "$@"
-
-environments=("Hopper-v5" "Walker2d-v5","HalfCheetah-v5","Ant-v5")
-for env in "${environments[@]}"; do
-    for i in {1..10}; do
-        seed=$((RANDOM))
-        srun .venv2/bin/python run_sac.py "$@" --env "$env" --seed "$seed"
-    done
-done

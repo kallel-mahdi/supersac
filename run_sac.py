@@ -41,6 +41,7 @@ parser = argparse.ArgumentParser()
 
 parser.add_argument('--seed',type=int,default=21) 
 parser.add_argument('--env_name', type=str, default='Walker2d-v5', help='Name of the gym environment to use')
+parser.add_argument('--gamma', type=float, default=0.99, help='Discount factor')
 
 args = parser.parse_args()
 
@@ -224,15 +225,16 @@ def train():
 
     wandb_config = default_wandb_config()
     wandb_config.update({
-        'project': 'sac_jax',
+        'project': 'sac_benchmark',
         'group': 'sac_test',
         'name': f'sac_{args.env_name}',
+        'hyperparam_dict':args.__dict__,
     })
 
 
     env = EpisodeMonitor(gym.make(args.env_name))
     eval_env = EpisodeMonitor(gym.make(args.env_name))
-    wandb_run = setup_wandb(**wandb_config,hyperparam_dict={})
+    wandb_run = setup_wandb(**wandb_config)
 
     example_transition = dict(
         observations=env.observation_space.sample(),
@@ -249,6 +251,7 @@ def train():
                     example_transition['observations'][None],
                     example_transition['actions'][None],
                     max_steps=max_steps,
+                    discount = args.gamma,
                     #**FLAGS.config
                     )
 

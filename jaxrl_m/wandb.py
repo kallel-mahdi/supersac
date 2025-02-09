@@ -134,6 +134,7 @@ def setup_wandb(
 
     init_kwargs.update(additional_init_kwargs)
     run = wandb.init(**init_kwargs)
+    print("WANDB INIIIIIIIIIIIIIIIIIIIIT")
 
     #wandb.config.update(get_flag_dict())
 

@@ -29,6 +29,7 @@ from jaxrl_m.ppo_plus import *
 from jaxrl_m.utils import *
 from jaxrl_m.normalize import *
 from jaxrl_m.dmc import DMCGym
+import random
 
 #logging.basicConfig(level=logging.DEBUG)  # Ignore warnings and below (INFO, WARNING, etc.)
 
@@ -38,6 +39,10 @@ os.environ["WANDB_API_KEY"]="28996bd59f1ba2c5a8c3f2cc23d8673c327ae230"
 os.environ["WANDB__SERVICE_WAIT"] = str(1800)
 os.environ['PYTHONHASHSEED'] = '1'
 os.environ['TF_CUDNN_DETERMINISTIC'] = '1'
+os.environ['TF_DETERMINISTIC_OPS'] = '1'
+os.environ['XLA_FLAGS']='--xla_gpu_deterministic_ops=true'
+
+
 
 ##############################
 parser = argparse.ArgumentParser()
@@ -46,7 +51,7 @@ parser.add_argument('--seed',type=int,default=2025)
 
 parser.add_argument('--algo_name', type=str, default='superppo', help='the name of the RL algorithm')
 parser.add_argument('--project_name',type=str,default="single_exp") 
-parser.add_argument('--env_name',type=str,default="Swimmer-v5") 
+parser.add_argument('--env_name',type=str,default="Ant-v5") 
 parser.add_argument('--max_steps',type=int,default=1_000_000) 
 parser.add_argument('--max_episode_steps',type=int,default=1000) 
 parser.add_argument('--gamma',type=float,default=0.995)
@@ -61,11 +66,11 @@ parser.add_argument('--min_target',type=str2bool,default=False)
 
 parser.add_argument('--critic_lr',type=float,default=3e-4) 
 parser.add_argument('--actor_lr',type=float,default=3e-4) 
-parser.add_argument('--temp_lr',type=float,default=3e-10) 
-parser.add_argument('--temperature',type=float,default=0.05)
+parser.add_argument('--temp_lr',type=float,default=3e-4) 
+parser.add_argument('--temperature',type=float,default=1.)
 parser.add_argument('--use_layer_norm',type=str2bool,default=True)
 parser.add_argument('--momentum',type=float,default=0.) 
-parser.add_argument('--b2',type=float,default=0.9) 
+parser.add_argument('--b2',type=float,default=0.5) 
 
 parser.add_argument('--clipping_ratio',type=float,default=0.25) 
 parser.add_argument('--gae_lambda',type=float,default=0.5) 
@@ -82,6 +87,12 @@ parser.add_argument('--activation_fn',type=str,default='tanh')
 
 args = parser.parse_args()
 print(args)
+
+
+
+random.seed(args.seed)
+np.random.seed(args.seed)
+jax_rng = jax.random.PRNGKey(args.seed)
 
 if args.env_name == "Humanoid-v5": args.max_steps = 5_000_000
 

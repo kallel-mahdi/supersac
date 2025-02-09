@@ -16,7 +16,7 @@ def str2bool(v):
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--seed',type=int,default=42) 
-parser.add_argument('--env_name',type=str,default="Hopper-v5")
+parser.add_argument('--env_name',type=str,default="Walker2d-v5")
 parser.add_argument('--project_name',type=str,default="rlc_995_const_temp") 
 
 parser.add_argument('--num_critics',type=int,default=2) 
@@ -30,7 +30,7 @@ parser.add_argument('--use_layer_norm',type=bool,default=True)
 parser.add_argument('--momentum',type=float,default=0.) 
 parser.add_argument('--b2',type=float,default=0.9) 
 
-parser.add_argument('--max_episode_steps',type=int,default=1000) 
+parser.add_argument('--max_episode_steps',type=int,default=1000)
 parser.add_argument('--clipping_ratio',type=float,default=0.25)
 
 parser.add_argument('--gamma',type=float,default=0.995)
@@ -58,7 +58,7 @@ for cfg in configs :
 
     command = f'sbatch job_file.sh\
     --seed  {cfg[0]} --env_name {cfg[1]} --project_name {cfg[2]} \
-    --gamma {cfg[3]} --max_steps {cfg[4]} --policy_steps {cfg[5]} \
+    --gamma {cfg[3]} --b2 {cfg[4]} --policy_steps {cfg[5]} \
     --num_critics {cfg[6]} --activation_fn {cfg[7]} --discount_entropy {cfg[8]} \
     --discount_actor {cfg[9]} --buffer_size {cfg[10]} --max_episode_steps {cfg[11]} \
     --use_layer_norm {cfg[12]} --momentum {cfg[13]} --on_policy_data {cfg[14]} --clipping_ratio {cfg[15]}\

@@ -17,7 +17,7 @@ def str2bool(v):
 parser = argparse.ArgumentParser()
 parser.add_argument('--seed',type=int,default=42) 
 parser.add_argument('--env_name',type=str,default="Walker2d-v5")
-parser.add_argument('--project_name',type=str,default="rlc_995_BIGTEMP") 
+parser.add_argument('--project_name',type=str,default="RLC_MINTEMP") 
 
 parser.add_argument('--num_critics',type=int,default=2) 
 parser.add_argument('--discount_entropy',type=str2bool,default=True)
@@ -42,11 +42,11 @@ args = parser.parse_args()
 ##############################
 
 np.random.seed(args.seed)
-seeds = list(np.random.randint(0,1e6,10))
+seeds = list(np.random.randint(0,1e6,5))
 configs = itertools.product(seeds,["Hopper-v5","Walker2d-v5","HalfCheetah-v5","Ant-v5"],[args.project_name],
                             [args.gamma],[args.b2],[args.policy_steps],
                             [args.num_critics],[args.activation_fn],[args.discount_entropy],[args.discount_actor],[args.buffer_size],
-                            [args.max_episode_steps],[args.use_layer_norm],[args.momentum],[args.on_policy_data],[args.clipping_ratio])
+                            [args.max_episode_steps],[args.use_layer_norm],[args.momentum],[args.on_policy_data],[0.2,0.25])
             
 for cfg in configs :
     

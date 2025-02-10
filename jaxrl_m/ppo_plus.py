@@ -20,17 +20,16 @@ def body(i,val):
     agent,batches = val
     return (agent.update_critics(get_batch(i,batches)),batches)
 
-
 class Temperature(nn.Module):
     initial_temperature: float = 1.
+    min_temperature: float = 0.01
 
     @nn.compact
     def __call__(self) -> jnp.ndarray:
         log_temp = self.param('log_temp',
-                              init_fn=lambda key: jnp.full(
-                                  (), jnp.log(self.initial_temperature)))
+                                init_fn=lambda key: jnp.full(
+                                    (), jnp.log(self.initial_temperature)))
         return jnp.exp(log_temp)
-
 
 class SACAgent(flax.struct.PyTreeNode):
     rng: PRNGKey
@@ -201,6 +200,13 @@ class SACAgent(flax.struct.PyTreeNode):
         def temp_loss_fn(temp_params, entropy, target_entropy):
             temperature = agent.temp(params=temp_params)
             temp_loss = (temperature * (entropy - target_entropy)).mean()
+            temp_loss = jax.lax.cond(
+                jnp.logical_and(temperature < 0.01, temp_loss > 0),
+                lambda _: 0.0,
+                lambda _: temp_loss,
+                operand=None
+            )
+            
             return temp_loss, {
                 'temp_loss': temp_loss,
                 'temperature': temperature,
@@ -266,6 +272,7 @@ class SACAgent(flax.struct.PyTreeNode):
             
             new_actor, actor_info = agent.actor.apply_loss_fn(actor_loss_fn,True,adv,batch,idx)#adv
             new_temp, temp_info = agent.temp.apply_loss_fn(temp_loss_fn,True,actor_info['entropy'],agent.config['target_entropy'])
+            
 
             agent = agent.replace(rng=new_rng, actor=new_actor,temp=new_temp)
             

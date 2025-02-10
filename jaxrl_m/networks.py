@@ -158,7 +158,8 @@ class Policy(nn.Module):
 
     @nn.compact
     def __call__(
-        self, observations: jnp.ndarray, temperature: float = 1.0
+        self, observations: jnp.ndarray, 
+        temperature: float = 1.0,
     ) -> distrax.Distribution:
         outputs = MLP(
             self.hidden_dims,

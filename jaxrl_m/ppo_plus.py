@@ -105,7 +105,7 @@ class SACAgent(flax.struct.PyTreeNode):
     @jax.jit
     def update_actor(agent, batch: Batch):
         
-        @jax.jit
+      
         def compute_gae(rewards: jnp.ndarray, values: jnp.ndarray, next_values: jnp.ndarray, 
                         dones: jnp.ndarray, truncations: jnp.ndarray, gamma: float, 
                         lam: float) -> jnp.ndarray:
@@ -137,7 +137,7 @@ class SACAgent(flax.struct.PyTreeNode):
 
             return advantages,None
                 
-        @jax.jit
+  
         def actor_loss_fn(
                 actor_params,
                 adv,
@@ -197,7 +197,7 @@ class SACAgent(flax.struct.PyTreeNode):
                 'approx_kl':approx_kl
             }
             
-        @jax.jit
+        
         def temp_loss_fn(temp_params, entropy, target_entropy):
             temperature = agent.temp(params=temp_params)
             temp_loss = (temperature * (entropy - target_entropy)).mean()

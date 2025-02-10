@@ -226,7 +226,6 @@ def train():
     wandb_config = default_wandb_config()
     wandb_config.update({
         'project': 'sac_benchmark',
-        'group': 'sac_test',
         'name': f'sac_{args.env_name}',
         'hyperparam_dict':args.__dict__,
     })

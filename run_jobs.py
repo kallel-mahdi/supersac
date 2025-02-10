@@ -17,7 +17,7 @@ def str2bool(v):
 parser = argparse.ArgumentParser()
 parser.add_argument('--seed',type=int,default=42) 
 parser.add_argument('--env_name',type=str,default="Walker2d-v5")
-parser.add_argument('--project_name',type=str,default="rlc_995_const_temp") 
+parser.add_argument('--project_name',type=str,default="rlc_995_BIGTEMP") 
 
 parser.add_argument('--num_critics',type=int,default=2) 
 parser.add_argument('--discount_entropy',type=str2bool,default=True)
@@ -27,11 +27,11 @@ parser.add_argument('--on_policy_data',type=str2bool,default=False)
 parser.add_argument('--activation_fn',type=str,default="tanh") 
 parser.add_argument('--min_target',type=str2bool,default=False) 
 parser.add_argument('--use_layer_norm',type=bool,default=True) 
-parser.add_argument('--momentum',type=float,default=0.) 
-parser.add_argument('--b2',type=float,default=0.9) 
+parser.add_argument('--momentum',type=float,default=0.9) 
+parser.add_argument('--b2',type=float,default=0.999) 
 
 parser.add_argument('--max_episode_steps',type=int,default=1000)
-parser.add_argument('--clipping_ratio',type=float,default=0.25)
+parser.add_argument('--clipping_ratio',type=float,default=0.2)
 
 parser.add_argument('--gamma',type=float,default=0.995)
 parser.add_argument('--policy_steps',type=int,default=5120) 

@@ -201,7 +201,7 @@ class SACAgent(flax.struct.PyTreeNode):
             temperature = agent.temp(params=temp_params)
             temp_loss = (temperature * (entropy - target_entropy)).mean()
             temp_loss = jax.lax.cond(
-                jnp.logical_and(temperature < 0.001, temp_loss > 0),
+                jnp.logical_and(temperature < 0.01, temp_loss > 0),
                 lambda _: 0.0,
                 lambda _: temp_loss,
                 operand=None

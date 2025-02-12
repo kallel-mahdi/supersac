@@ -348,10 +348,9 @@ def create_learner(
                 minibatch : bool = False,
                 target_entropy: float = None,
                 state_dependent_std=True,
-                tanh_squash_distribution=False,
-                tanh_squash_actions=True,
-                use_bias=True,
-                
+                tanh_squash_distribution=False,## This should be false
+                tanh_squash_actions=True, ## This should be true
+           
                 
                 
             **kwargs):

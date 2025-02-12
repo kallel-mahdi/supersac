@@ -84,6 +84,7 @@ parser.add_argument('--num_critic_updates',type=int,default=200)
 parser.add_argument('--num_actor_updates',type=int,default=1)
 parser.add_argument('--healthy_reward',type=float,default=1.)
 parser.add_argument('--activation_fn',type=str,default='tanh')
+parser.add_argument('--stable_scheme',type=bool,default=True)
 
 args = parser.parse_args()
 print(args)
@@ -98,7 +99,7 @@ if args.env_name == "Humanoid-v5": args.max_steps = 5_000_000
 
 
 #jax.config.update("jax_disable_jit", True)
-# config.update("jax_debug_nans", True)
+config.update("jax_debug_nans", True)
 # config.update("jax_default_matmul_precision", "highest")
 #config.update("jax_log_compiles", True)
 
@@ -175,6 +176,9 @@ def train(args):
                     gae_lambda=args.gae_lambda,
                     minibatch = args.minibatch,
                     activation_fn = args.activation_fn,
+                    state_dependent_std=True,
+                    tanh_squash_distribution= not args.stable_scheme,## This should be false
+                    tanh_squash_actions= args.stable_scheme, ## This should be true
                     #**FLAGS.config
                     )
 

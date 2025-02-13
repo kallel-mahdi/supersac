@@ -57,24 +57,25 @@ parser.add_argument('--max_episode_steps',type=int,default=1000)
 parser.add_argument('--gamma',type=float,default=0.99)
 parser.add_argument('--entropy_coeff',type=float,default=1.) 
 
-parser.add_argument('--num_critics',type=int,default=2)
+parser.add_argument('--num_critics',type=int,default=5)
+parser.add_argument('--hidden_dims',type=int,default=256) 
+parser.add_argument('--critic_lr',type=float,default=3e-4) 
+parser.add_argument('--actor_lr',type=float,default=3e-4) 
+parser.add_argument('--temp_lr',type=float,default=3e-4) 
+parser.add_argument('--momentum',type=float,default=0.9) 
+parser.add_argument('--b2',type=float,default=0.999) 
+parser.add_argument('--temperature',type=float,default=0.2) 
+
 parser.add_argument('--discount_actor',type=str2bool,default=False)
 parser.add_argument('--discount_entropy',type=str2bool,default=False) 
 parser.add_argument('--on_policy_data',type=str2bool,default=False)
 parser.add_argument('--adaptive_critics',type=str2bool,default=False) 
 parser.add_argument('--min_target',type=str2bool,default=False)
+parser.add_argument('--use_layer_norm',type=str2bool,default=True)
 
-parser.add_argument('--critic_lr',type=float,default=3e-4) 
-parser.add_argument('--actor_lr',type=float,default=3e-4) 
-parser.add_argument('--temp_lr',type=float,default=3e-4) 
-parser.add_argument('--temperature',type=float,default=1.)
-parser.add_argument('--use_layer_norm',type=str2bool,default=False)
-parser.add_argument('--momentum',type=float,default=0.9) 
-parser.add_argument('--b2',type=float,default=0.999) 
-
-parser.add_argument('--clipping_ratio',type=float,default=0.2) 
+parser.add_argument('--clipping_ratio',type=float,default=0.25) 
 parser.add_argument('--gae_lambda',type=float,default=0.5) 
-parser.add_argument('--hidden_dims',type=int,default=256) 
+
 parser.add_argument('--episode_based',type=str2bool,default=False) 
 parser.add_argument('--minibatch',type=str2bool,default=True) 
 parser.add_argument('--buffer_size',type=int,default=51200) 
@@ -82,9 +83,9 @@ parser.add_argument('--policy_steps',type=int,default=5120)
 parser.add_argument('--num_epochs',type=int,default=10) 
 parser.add_argument('--num_critic_updates',type=int,default=200)
 parser.add_argument('--num_actor_updates',type=int,default=1)
-parser.add_argument('--healthy_reward',type=float,default=1.)
 parser.add_argument('--activation_fn',type=str,default='tanh')
-parser.add_argument('--stable_scheme',type=bool,default=True)
+parser.add_argument('--stable_scheme',type=str2bool,default=True)
+parser.add_argument('--bound_actions',type=str2bool,default=True)
 
 args = parser.parse_args()
 print(args)
@@ -116,14 +117,6 @@ def train(args):
         'hyperparam_dict':args.__dict__,
         }
     wandb_run = setup_wandb(**wandb_config)
-    
-    
-    # if 'HalfCheetah' in args.env_name or 'Pendulum' in args.env_name:
-    #     env = gym.wrappers.RecordEpisodeStatistics(gym.make(args.env_name, max_episode_steps=args.max_episode_steps))
-    # else:
-    #     print(f'env_name: {args.env_name}, max_episode_steps: {args.max_episode_steps}, healthy_reward: {args.healthy_reward}')
-    #     env = gym.wrappers.RecordEpisodeStatistics(gym.make(args.env_name, max_episode_steps=args.max_episode_steps, healthy_reward=args.healthy_reward))
-   
     
     env = gym.wrappers.RecordEpisodeStatistics(gym.make(args.env_name, max_episode_steps=args.max_episode_steps))
     
@@ -177,8 +170,8 @@ def train(args):
                     minibatch = args.minibatch,
                     activation_fn = args.activation_fn,
                     state_dependent_std=True,
-                    tanh_squash_distribution= not args.stable_scheme,## This should be false
-                    tanh_squash_actions= args.stable_scheme, ## This should be true
+                    tanh_squash_distribution= not args.stable_scheme and args.,## This should be false
+                    tanh_squash_actions= args.stable_scheme and args.bound_actions, ## This should be true
                     #**FLAGS.config
                     )
 
@@ -188,7 +181,7 @@ def train(args):
     unlogged_steps,cached_steps = 0,0
     
     rollout_fn = rollout_policy if args.episode_based else rollout_policy2
-        
+
     with tqdm.tqdm(total=max_steps) as pbar:
         
         while (i < max_steps):

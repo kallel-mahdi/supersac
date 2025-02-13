@@ -87,6 +87,8 @@ class Args:
     """the number of iterations (computed in runtime)"""
     normalize_reward: bool = True
     """if toggled, normalize the reward"""
+    use_layernorm: bool = False
+    """if toggled, use layer normalization for actor and critic"""
 
 
 def make_env(env_id, idx, capture_video, run_name, gamma):
@@ -114,21 +116,25 @@ def layer_init(layer, std=np.sqrt(2), bias_const=0.0):
     torch.nn.init.constant_(layer.bias, bias_const)
     return layer
 
-
 class Agent(nn.Module):
     def __init__(self, envs):
         super().__init__()
+        self.use_layernorm = args.use_layernorm
         self.critic = nn.Sequential(
             layer_init(nn.Linear(np.array(envs.single_observation_space.shape).prod(), 64)),
+            nn.LayerNorm(64) if self.use_layernorm else nn.Identity(),
             nn.Tanh(),
             layer_init(nn.Linear(64, 64)),
+            nn.LayerNorm(64) if self.use_layernorm else nn.Identity(),
             nn.Tanh(),
             layer_init(nn.Linear(64, 1), std=1.0),
         )
         self.actor_mean = nn.Sequential(
             layer_init(nn.Linear(np.array(envs.single_observation_space.shape).prod(), 64)),
+            nn.LayerNorm(64) if self.use_layernorm else nn.Identity(),
             nn.Tanh(),
             layer_init(nn.Linear(64, 64)),
+            nn.LayerNorm(64) if self.use_layernorm else nn.Identity(),
             nn.Tanh(),
             layer_init(nn.Linear(64, np.prod(envs.single_action_space.shape)), std=0.01),
         )
@@ -137,19 +143,19 @@ class Agent(nn.Module):
     def get_value(self, x):
         return self.critic(x)
 
-    def get_action_and_value(self, x, action=None):
-        action_mean = self.actor_mean(x)
-        action_logstd = self.actor_logstd.expand_as(action_mean)
-        action_std = torch.exp(action_logstd)
-        probs = Normal(action_mean, action_std)
-        if action is None:
-            action = probs.sample()
-        return action, probs.log_prob(action).sum(1), probs.entropy().sum(1), self.critic(x)
+def get_action_and_value(self, x, action=None):
+    action_mean = self.actor_mean(x)
+    action_logstd = self.actor_logstd.expand_as(action_mean)
+    action_std = torch.exp(action_logstd)
+    probs = Normal(action_mean, action_std)
+    if action is None:
+        action = probs.sample()
+    return action, probs.log_prob(action).sum(1), probs.entropy().sum(1), self.critic(x)
 
-    def deterministic_action(self, x, action=None):
-        x = torch.Tensor(x).to(device)
-        action_mean = self.actor_mean(x)
-        return action_mean.cpu().detach().numpy()
+def deterministic_action(self, x, action=None):
+    x = torch.Tensor(x).to(device)
+    action_mean = self.actor_mean(x)
+    return action_mean.cpu().detach().numpy()
 
 
 if __name__ == "__main__":
@@ -357,31 +363,8 @@ if __name__ == "__main__":
         print("SPS:", int(global_step / (time.time() - start_time)))
         writer.add_scalar("charts/SPS", int(global_step / (time.time() - start_time)), global_step)
 
-    if args.save_model:
-        model_path = f"runs/{run_name}/{args.exp_name}.cleanrl_model"
-        torch.save(agent.state_dict(), model_path)
-        print(f"model saved to {model_path}")
-        from cleanrl_utils.evals.ppo_eval import evaluate
-
-        episodic_returns = evaluate(
-            model_path,
-            make_env,
-            args.env_id,
-            eval_episodes=10,
-            run_name=f"{run_name}-eval",
-            Model=Agent,
-            device=device,
-            gamma=args.gamma,
-        )
-        for idx, episodic_return in enumerate(episodic_returns):
-            writer.add_scalar("eval/episodic_return", episodic_return, idx)
-
-        if args.upload_model:
-            from cleanrl_utils.huggingface import push_to_hub
-
-            repo_name = f"{args.env_id}-{args.exp_name}-seed{args.seed}"
-            repo_id = f"{args.hf_entity}/{repo_name}" if args.hf_entity else repo_name
-            push_to_hub(args, episodic_returns, repo_id, "PPO", f"runs/{run_name}", f"videos/{run_name}-eval")
-
+   
+      
+      
     envs.close()
     writer.close()

@@ -154,9 +154,10 @@ def rollout_policy_lqr(agent,env,exploration_rng,
         next_obs, reward, done, info = env.step(action)
         
         mask = float(not done)
+        truncated = n_steps%max_length==0
 
         transition = dict(observations=obs,actions=action,
-            rewards=reward,masks=mask,next_observations=next_obs,discounts=disc,
+            rewards=reward,masks=mask,truncateds=truncated,next_observations=next_obs,discounts=disc,
             log_probs=log_p,pre_actions=pre_action)
         
         if replay_buffer is not None:

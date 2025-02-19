@@ -76,28 +76,25 @@ parser.add_argument('--env_name', type=str, default='Hopper-v5', help='the id of
 parser.add_argument('--max_steps', type=int, default=1000000, help='total timesteps of the experiments')
 parser.add_argument('--learning_rate', type=float, default=3e-4, help='the learning rate of the optimizer')
 parser.add_argument('--num_envs', type=int, default=1, help='the number of parallel game environments')
-parser.add_argument('--num_steps', type=int, default=2048, help='the number of steps to run in each environment per policy rollout')
+parser.add_argument('--num_steps', type=int, default=5120, help='the number of steps to run in each environment per policy rollout')
 
 
-parser.add_argument('--anneal_lr', default=True,action='store_true', help='Toggle learning rate annealing for policy and value networks')
-
-parser.add_argument('--full_batch',type=str2bool, default=True)
+parser.add_argument('--anneal_lr', default=True,type=str2bool, help='Toggle learning rate annealing for policy and value networks')
+parser.add_argument('--normalize_reward',type=str2bool, default=True)
+parser.add_argument('--full_batch',type=str2bool, default=False)
 parser.add_argument('--gamma', type=float, default=0.99, help='the discount factor gamma')
-
+parser.add_argument('--gae_lambda', type=float, default=0.95, help='the lambda for the general advantage estimation')
 parser.add_argument('--num_minibatches', type=int, default=32, help='the number of mini-batches')
 parser.add_argument('--update_epochs', type=int, default=10, help='the K epochs to update the policy')
-
+parser.add_argument('--norm_adv',default=True,type=str2bool, help='Toggles advantages normalization')#####
 parser.add_argument('--clip_coef', type=float, default=0.2, help='the surrogate clipping coefficient')
-parser.add_argument('--clip_vloss', default=True,action='store_true', help='Toggles whether or not to use a clipped loss for the value function, as per the paper.')
+parser.add_argument('--clip_vloss', default=True,type=str2bool, help='Toggles whether or not to use a clipped loss for the value function, as per the paper.')
 parser.add_argument('--ent_coef', type=float, default=0.0, help='coefficient of the entropy')
 parser.add_argument('--vf_coef', type=float, default=0.5, help='coefficient of the value function')
 parser.add_argument('--max_grad_norm', type=float, default=0.5, help='the maximum norm for the gradient clipping')
 parser.add_argument('--target_kl', type=float, default=None, help='the target KL divergence threshold')
-
-parser.add_argument('--gae_lambda', type=float, default=0.95, help='the lambda for the general advantage estimation')
-parser.add_argument('--norm_adv',default=True,action='store_true', help='Toggles advantages normalization')#####
-parser.add_argument('--use_layernorm', type=bool, default=False, help='Use layernorm for the policy and value networks')
-parser.add_argument('--normalize_reward',type=str2bool, default=True)
+parser.add_argument('--hidden_dims', type=int, default=256, help='the hidden dimensions of the network')
+parser.add_argument('--use_layer_norm',type=str2bool, default=True, help='Toggle to use layer norm in the policy/value networks')
 
 args = parser.parse_args()
 args.batch_size = int(args.num_envs * args.num_steps)
@@ -137,36 +134,36 @@ def layer_init(layer, std=np.sqrt(2), bias_const=0.0):
 
 
 class Agent(nn.Module):
-    def __init__(self, envs):
+    def __init__(self, envs, hidden_size, use_layer_norm):
         super().__init__()
-        use_ln = args.use_layernorm  # read from args
-
+        input_dim = int(np.prod(envs.single_observation_space.shape))
+        action_dim = int(np.prod(envs.single_action_space.shape))
+        norm_layer = lambda dim: nn.LayerNorm(dim) if use_layer_norm else nn.Identity()
+        
         self.critic = nn.Sequential(
-            layer_init(nn.Linear(np.array(envs.single_observation_space.shape).prod(), 64)),
-            nn.LayerNorm(64) if use_ln else nn.Identity(),
+            layer_init(nn.Linear(input_dim, hidden_size)),
+            norm_layer(hidden_size),
             nn.Tanh(),
-            layer_init(nn.Linear(64, 64)),
-            nn.LayerNorm(64) if use_ln else nn.Identity(),
+            layer_init(nn.Linear(hidden_size, hidden_size)),
+            norm_layer(hidden_size),
             nn.Tanh(),
-            layer_init(nn.Linear(64, 1), std=1.0),
+            layer_init(nn.Linear(hidden_size, 1), std=1.0),
         )
         self.actor_mean = nn.Sequential(
-            layer_init(nn.Linear(np.array(envs.single_observation_space.shape).prod(), 64)),
-            nn.LayerNorm(64) if use_ln else nn.Identity(),
+            layer_init(nn.Linear(input_dim, hidden_size)),
+            norm_layer(hidden_size),
             nn.Tanh(),
-            layer_init(nn.Linear(64, 64)),
-            nn.LayerNorm(64) if use_ln else nn.Identity(),
+            layer_init(nn.Linear(hidden_size, hidden_size)),
+            norm_layer(hidden_size),
             nn.Tanh(),
-            layer_init(nn.Linear(64, np.prod(envs.single_action_space.shape)), std=0.01),
+            layer_init(nn.Linear(hidden_size, action_dim), std=0.01),
         )
-        self.actor_logstd = nn.Parameter(torch.zeros(1, np.prod(envs.single_action_space.shape)))
-
+        self.actor_logstd = nn.Parameter(torch.zeros(1, action_dim))
 
     def get_value(self, x):
         return self.critic(x)
 
     def get_action_and_value(self, x, action=None):
-        
         action_mean = self.actor_mean(x)
         action_logstd = self.actor_logstd.expand_as(action_mean)
         action_std = torch.exp(action_logstd)
@@ -174,18 +171,16 @@ class Agent(nn.Module):
         if action is None:
             action = probs.sample()
         return action, probs.log_prob(action).sum(1), probs.entropy().sum(1), self.critic(x)
-    
-    
-    def sample_actions(self, x,*args,**kwargs):
+
+    def sample_actions(self, x, *args, **kwargs):
         x = torch.Tensor(x).to(device)
-        #action = self.actor_mean(x)
         action_mean = self.actor_mean(x)
         action_logstd = self.actor_logstd.expand_as(action_mean)
         action_std = torch.exp(action_logstd)
         probs = Normal(action_mean, action_std)
         action = probs.sample()
         return action.cpu().detach().numpy()
-    
+
     def deterministic_action(self, x, action=None):
         x = torch.Tensor(x).to(device)
         action_mean = self.actor_mean(x)
@@ -224,7 +219,7 @@ if __name__ == "__main__":
     #eval_env = envpool.make(args.env_name, env_type="gymnasium", num_envs=10)
     log_interval = 10000
     unlogged_steps,total_steps = 0,0
-    agent = Agent(envs).to(device)
+    agent = Agent(envs,args.hidden_dims,args.use_layer_norm).to(device)
     optimizer = optim.Adam(agent.parameters(), lr=args.learning_rate, eps=1e-5)
 
     # ALGO Logic: Storage setup
@@ -361,16 +356,15 @@ if __name__ == "__main__":
         if unlogged_steps >= log_interval:
     
             unlogged_steps = 0
-            #eval_metrics = {"evaluation/undisc_policy_return": np.mean(last_returns)}
-            
-            #print(one(envs.env,name="return_rms"),two(envs.env,name="obs_rms"))
-            
+           
             eval_env = copy.deepcopy(envs)
-            undisc_policy_return = rollout_policy_ppo( 
-                                                    agent,env = eval_env,
-                                                    num_rollouts=10,
-                                                    discount = args.gamma,max_length=1000)
-            
+
+            print("heeeeeeeeeeeeeeeeere")
+            undisc_policy_return = rollout_policy_ppo(
+                                                                    agent,env = eval_env,
+                                                                    num_rollouts=10,
+                                                                    discount = args.gamma,max_length=1000)
+            print("heeeeeeeeeeeeeeeeere2")
             eval_metrics = {"undisc_policy_return": undisc_policy_return}
 
             eval_metrics = {f'evaluation/{k}': v for k, v in eval_metrics.items()}

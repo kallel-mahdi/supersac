@@ -30,6 +30,7 @@ from jaxrl_m.utils import *
 from jaxrl_m.normalize import *
 from jaxrl_m.dmc import DMCGym
 import random
+from dm_control import suite
 
 #logging.basicConfig(level=logging.DEBUG)  # Ignore warnings and below (INFO, WARNING, etc.)
 
@@ -51,7 +52,7 @@ parser.add_argument('--seed',type=int,default=42)
 
 parser.add_argument('--algo_name', type=str, default='superppo', help='the name of the RL algorithm')
 parser.add_argument('--project_name',type=str,default="single_exp") 
-parser.add_argument('--env_name',type=str,default="Walker2d-v5") 
+parser.add_argument('--env_name',type=str,default="Swimmer-v5") 
 parser.add_argument('--max_steps',type=int,default=1_000_000) 
 parser.add_argument('--max_episode_steps',type=int,default=1000) 
 parser.add_argument('--gamma',type=float,default=0.99)
@@ -64,7 +65,7 @@ parser.add_argument('--actor_lr',type=float,default=3e-4)
 parser.add_argument('--temp_lr',type=float,default=3e-4) 
 parser.add_argument('--momentum',type=float,default=0.9) 
 parser.add_argument('--b2',type=float,default=0.999) 
-parser.add_argument('--temperature',type=float,default=0.2) 
+parser.add_argument('--temperature',type=float,default=1.0) 
 
 parser.add_argument('--discount_actor',type=str2bool,default=False)
 parser.add_argument('--discount_entropy',type=str2bool,default=False) 
@@ -74,7 +75,7 @@ parser.add_argument('--min_target',type=str2bool,default=False)
 parser.add_argument('--use_layer_norm',type=str2bool,default=True)
 
 parser.add_argument('--clipping_ratio',type=float,default=0.25) 
-parser.add_argument('--gae_lambda',type=float,default=0.5) 
+parser.add_argument('--gae_lambda',type=float,default=0.8) 
 
 parser.add_argument('--episode_based',type=str2bool,default=False) 
 parser.add_argument('--minibatch',type=str2bool,default=True) 
@@ -119,12 +120,16 @@ def train(args):
     wandb_run = setup_wandb(**wandb_config)
     
     env = gym.wrappers.RecordEpisodeStatistics(gym.make(args.env_name, max_episode_steps=args.max_episode_steps))
+    # env = gym.wrappers.NormalizeObservation(env)
+    # env = gym.wrappers.TransformObservation(env, lambda obs: np.clip(obs, -10, 10),env.observation_space)
+    # env = gym.wrappers.NormalizeReward(env, gamma=args.gamma)
+    # env = gym.wrappers.TransformReward(env, lambda reward: np.clip(reward, -10, 10))
     
     eval_env = gym.wrappers.RecordEpisodeStatistics(gym.make(args.env_name,max_episode_steps=1000))
     
     
-    # env = DMCGym("hopper","hop")
-    # eval_env = DMCGym("hopper","hop")
+    # env = DMCGym("dog","walk")
+    # eval_env = DMCGym("dog","walk")
     
 
     example_transition = dict(
@@ -170,7 +175,7 @@ def train(args):
                     minibatch = args.minibatch,
                     activation_fn = args.activation_fn,
                     state_dependent_std=True,
-                    tanh_squash_distribution= not args.stable_scheme and args.,## This should be false
+                    tanh_squash_distribution= not args.stable_scheme and args.bound_actions,## This should be false
                     tanh_squash_actions= args.stable_scheme and args.bound_actions, ## This should be true
                     #**FLAGS.config
                     )

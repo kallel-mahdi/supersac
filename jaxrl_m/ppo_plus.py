@@ -258,6 +258,10 @@ class SACAgent(flax.struct.PyTreeNode):
             q = agent.critic(batch["observations"],batch["actions"]).mean(axis=0)
             adv = (q-agent.temp()*batch["log_probs"]) - (tmp_v - agent.temp() *tmp_logp)### This one worked
             adv = adv.reshape(-1)
+            
+        
+        idx = jnp.arange(adv.shape[0])
+        #grads,info = jax.grad(actor_loss_fn,has_aux=True)(agent.actor.params,adv,batch,idx)
     
         if agent.config["minibatch"]:
         
@@ -280,7 +284,9 @@ class SACAgent(flax.struct.PyTreeNode):
 
             agent = agent.replace(rng=new_rng, actor=new_actor,temp=new_temp)
             
-        return agent, {**actor_info,**temp_info}
+        return agent, {**actor_info,**temp_info
+                       #,"grads":grads
+                       }
 
             
         
@@ -415,4 +421,6 @@ def create_learner(
         ))
 
         return SACAgent(rng, critic=critic, target_critic=v, actor=actor, temp=temp, config=config)
+
+
 

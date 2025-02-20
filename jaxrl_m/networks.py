@@ -39,10 +39,13 @@ def relu_init(scale: Optional[float] = 1.0):
 
 
 class MLP(nn.Module):
+    
     hidden_dims: Sequence[int]
-    activations: Callable[[jnp.ndarray], jnp.ndarray] 
+    activations: Callable[[jnp.ndarray], jnp.ndarray]     
     use_layer_norm: bool
     activate_final: bool
+    use_bias : bool = True
+    
 
     @nn.compact
     def __call__(self, x: jnp.ndarray, train=False) -> jnp.ndarray:
@@ -50,7 +53,7 @@ class MLP(nn.Module):
             
             kernel_init = tanh_init() if self.activations == nn.tanh else relu_init()
 
-            x = nn.Dense(size, kernel_init=kernel_init,use_bias=True)(x)
+            x = nn.Dense(size, kernel_init=kernel_init,use_bias=self.use_bias)(x)
 
             if i + 1 < len(self.hidden_dims) or self.activate_final:
                 if self.use_layer_norm:
@@ -80,9 +83,10 @@ class Critic(nn.Module):
 
 class OriginalCritic(nn.Module):
     hidden_dims: Sequence[int]
-    use_layer_norm: bool 
+    use_layer_norm: bool
     activations: Callable[[jnp.ndarray], jnp.ndarray]
     scale_final: Optional[float] = None
+    
 
     @nn.compact
     def __call__(self, observations: jnp.ndarray, actions: jnp.ndarray,
@@ -153,6 +157,7 @@ class Policy(nn.Module):
     log_std_min: Optional[float] = -10
     log_std_max: Optional[float] = 2
     state_dependent_std: bool = True
+    use_bias : bool = True
 
     
 
@@ -166,16 +171,17 @@ class Policy(nn.Module):
             activate_final=True,
             use_layer_norm=self.use_layer_norm,
             activations=self.activations,
+            use_bias= self.use_bias,
         )(observations)
 
         kernel_init = tanh_init if self.activations == nn.tanh else relu_init
 
         means = nn.Dense(
-            self.action_dim, kernel_init=kernel_init(self.final_fc_init_scale),use_bias=True,name="means"
+            self.action_dim, kernel_init=kernel_init(self.final_fc_init_scale),use_bias=self.use_bias,name="means"
         )(outputs)
         if self.state_dependent_std:
             log_stds = nn.Dense(
-                self.action_dim, kernel_init=kernel_init(self.final_fc_init_scale),use_bias=True,name="log_stds"
+                self.action_dim, kernel_init=kernel_init(self.final_fc_init_scale),use_bias=self.use_bias,name="log_stds"
             )(outputs)
         else:
             log_stds = self.param("log_stds", jax.nn.initializers.constant(-4.6), (self.action_dim,))

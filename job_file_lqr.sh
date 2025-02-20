@@ -10,4 +10,4 @@
 
 unset SLURM_EXPORT_ENV
 export WANDB_API_KEY=28996bd59f1ba2c5a8c3f2cc23d8673c327ae230
-srun .venv3/bin/python run_lqr.py "$@"
+srun .venv/bin/python run_lqr.py "$@"

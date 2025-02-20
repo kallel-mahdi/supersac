@@ -11,3 +11,5 @@ jax[cuda]
 envpool
 torch ## to get rid of
 dm_control
+pandas
+mushroom_rl

@@ -23,7 +23,7 @@ args = parser.parse_args()
 
 np.random.seed(42)
 seeds = list(np.random.randint(0,1e6,10))
-configs = itertools.product(seeds,["Hopper-v5","Walker2d-v5","HalfCheetah-v5","Ant-v5"],[args.gamma])
+configs = itertools.product(seeds,["InvertedDoublePendulum-v5","Humanoid-v5"],[args.gamma])
             
 for cfg in configs :
     

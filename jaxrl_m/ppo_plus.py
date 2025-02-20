@@ -87,7 +87,7 @@ class SACAgent(flax.struct.PyTreeNode):
     @jax.jit
     def update_critics_seq(agent,transitions,num_updates=0 ):
                 
-        n_batches = transitions['observations'].shape[0]//256
+        n_batches = transitions['observations'].shape[0]//250
 
         indexes = jnp.arange(transitions['observations'].shape[0])
         indexes = jax.random.permutation(agent.rng, indexes)
@@ -102,7 +102,7 @@ class SACAgent(flax.struct.PyTreeNode):
         if n_batches < 100:
             #n_batches = jnp.maximum(100,num_updates)
             n_batches = 100
-            idxs = jax.random.choice(agent.rng, a=transitions['observations'].shape[0], shape=(n_batches, 256), replace=True)
+            idxs = jax.random.choice(agent.rng, a=transitions['observations'].shape[0], shape=(n_batches, 250), replace=True)
 
         batches = jax.vmap(lambda i: jax.tree.map(lambda x: x[i], transitions))(idxs)
         agent,batches = jax.lax.fori_loop(0,n_batches,body,(agent,batches))
@@ -112,7 +112,7 @@ class SACAgent(flax.struct.PyTreeNode):
     @partial(jax.jit,static_argnames=("num_updates",))
     def update_critics_seq2(agent,transitions,num_updates=2000 ):
                 
-        idxs = jax.random.choice(agent.rng, a=transitions['observations'].shape[0], shape=(num_updates, 256), replace=True)
+        idxs = jax.random.choice(agent.rng, a=transitions['observations'].shape[0], shape=(num_updates, 250), replace=True)
 
         batches = jax.vmap(lambda i: jax.tree.map(lambda x: x[i], transitions))(idxs)
         agent,batches = jax.lax.fori_loop(0,num_updates,body,(agent,batches))
@@ -282,7 +282,7 @@ class SACAgent(flax.struct.PyTreeNode):
         
             indexes = jnp.arange(adv.shape[0])
             indexes = jax.random.permutation(new_rng, indexes)
-            batch_size = 256
+            batch_size = 250
             num_actor_updates = adv.shape[0] // batch_size
             index_batches = jnp.split(indexes[:batch_size * num_actor_updates], num_actor_updates)
         
@@ -380,6 +380,8 @@ def create_learner(
                 tanh_squash_distribution=False,## This should be false
                 tanh_squash_actions=True, ## This should be true
                 store_grads = False,
+                use_bias = True,
+                
            
                 
                 
@@ -396,7 +398,7 @@ def create_learner(
 
         action_dim = actions.shape[-1]
         actor_def = Policy(actor_hidden_dims, action_dim=action_dim,activations=activations,final_fc_init_scale=final_fc_init_scale,
-            state_dependent_std=state_dependent_std, tanh_squash_distribution=tanh_squash_distribution,use_layer_norm=use_layer_norm)
+            state_dependent_std=state_dependent_std, tanh_squash_distribution=tanh_squash_distribution,use_layer_norm=use_layer_norm,use_bias=use_bias)
 
         critic_def = ensemblize(OriginalCritic,num_critics)(hidden_dims=critic_hidden_dims,use_layer_norm=use_layer_norm,activations=activations)
         #critic_params = critic_def.init(critic_key, observations, actions)['params']

@@ -52,7 +52,7 @@ parser.add_argument('--seed',type=int,default=42)
 
 parser.add_argument('--algo_name', type=str, default='superppo', help='the name of the RL algorithm')
 parser.add_argument('--project_name',type=str,default="single_exp") 
-parser.add_argument('--env_name',type=str,default="Walker2d-v5") 
+parser.add_argument('--env_name',type=str,default="HumanoidStandup-v5") 
 parser.add_argument('--max_steps',type=int,default=1_000_000) 
 parser.add_argument('--max_episode_steps',type=int,default=1000) 
 parser.add_argument('--gamma',type=float,default=0.99)
@@ -79,8 +79,8 @@ parser.add_argument('--gae_lambda',type=float,default=0.5)
 
 parser.add_argument('--episode_based',type=str2bool,default=False) 
 parser.add_argument('--minibatch',type=str2bool,default=True) 
-parser.add_argument('--buffer_size',type=int,default=51200) 
-parser.add_argument('--policy_steps',type=int,default=5120) 
+parser.add_argument('--buffer_size',type=int,default=100_000) 
+parser.add_argument('--policy_steps',type=int,default=5000) 
 parser.add_argument('--num_epochs',type=int,default=10) 
 parser.add_argument('--num_critic_updates',type=int,default=200)
 parser.add_argument('--num_actor_updates',type=int,default=1)
@@ -97,17 +97,21 @@ random.seed(args.seed)
 np.random.seed(args.seed)
 jax_rng = jax.random.PRNGKey(args.seed)
 
-if args.env_name == "Humanoid-v5": args.max_steps = 5_000_000
 
 
 #jax.config.update("jax_disable_jit", True)
-config.update("jax_debug_nans", True)
+#config.update("jax_debug_nans", True)
 # config.update("jax_default_matmul_precision", "highest")
 #config.update("jax_log_compiles", True)
 
 def train(args):
     
-
+    
+        
+    if args.env_name in ["Humanoid-v5","HumanoidStandup-v5","walk","stand","trot"]: args.max_steps = 5_000_000
+    elif args.env_name == "InvertedDoublePendulum-v5": args.max_steps = 500_000
+    if args.on_policy_data: args.buffer_size = args.policy_steps
+    
     max_steps = args.max_steps
     log_interval = 20000
     n_grads = 0
@@ -119,17 +123,17 @@ def train(args):
         }
     wandb_run = setup_wandb(**wandb_config)
     
-    env = gym.wrappers.RecordEpisodeStatistics(gym.make(args.env_name, max_episode_steps=args.max_episode_steps))
-    # env = gym.wrappers.NormalizeObservation(env)
-    # env = gym.wrappers.TransformObservation(env, lambda obs: np.clip(obs, -10, 10),env.observation_space)
-    # env = gym.wrappers.NormalizeReward(env, gamma=args.gamma)
-    # env = gym.wrappers.TransformReward(env, lambda reward: np.clip(reward, -10, 10))
+    if args.env_name in ["walk","stand","trot"]:
+        env = DMCGym("dog",args.env_name)
+        eval_env = DMCGym("dog",args.env_name)
     
-    eval_env = gym.wrappers.RecordEpisodeStatistics(gym.make(args.env_name,max_episode_steps=1000))
+    else : 
+    
+        env = gym.wrappers.RecordEpisodeStatistics(gym.make(args.env_name, max_episode_steps=args.max_episode_steps))
+        eval_env = gym.wrappers.RecordEpisodeStatistics(gym.make(args.env_name,max_episode_steps=1000))
     
     
-    # env = DMCGym("dog","walk")
-    # eval_env = DMCGym("dog","walk")
+  
     
 
     example_transition = dict(
@@ -144,8 +148,7 @@ def train(args):
         log_probs=0.,
     )
 
-    buffer_size = args.policy_steps if args.on_policy_data else args.buffer_size
-    replay_buffer = ReplayBuffer.create(example_transition, size=int(buffer_size))
+    replay_buffer = ReplayBuffer.create(example_transition, size=int(args.buffer_size))
     actor_buffer = ActorReplayBuffer.create(example_transition, size=args.policy_steps)
 
     agent = create_learner(args.seed,

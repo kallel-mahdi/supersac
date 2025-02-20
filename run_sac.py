@@ -40,11 +40,14 @@ os.environ['XLA_FLAGS']='--xla_gpu_deterministic_ops=true'
 parser = argparse.ArgumentParser()
 
 parser.add_argument('--seed',type=int,default=21) 
+parser.add_argument('--project_name', type=str, default='sac_benchmark2', help='Name of the wandb project to log to')
 parser.add_argument('--env_name', type=str, default='Walker2d-v5', help='Name of the gym environment to use')
 parser.add_argument('--gamma', type=float, default=0.99, help='Discount factor')
+parser.add_argument('--algo_name', type=str, default="sac")
+parser.add_argument('--max_steps', type=int, default=1000000, help='Number of training steps')
 
 args = parser.parse_args()
-
+if args.env_name == "Humanoid-v5" : args.max_steps = 5000000 
 random.seed(args.seed)
 np.random.seed(args.seed)
 
@@ -218,22 +221,22 @@ def train():
     seed=args.seed
     eval_episodes=10
     batch_size = 256
-    max_steps = int(1e6)
+    max_steps = args.max_steps
     start_steps = int(1e4)                     
-    log_interval = 10000
+    log_interval = 20000
     eval_interval = 10000
 
-    wandb_config = default_wandb_config()
-    wandb_config.update({
-        'project': 'sac_benchmark',
-        'name': f'sac_{args.env_name}',
+ 
+    wandb_config = {
+        'project': args.project_name,
+        'name':None,
         'hyperparam_dict':args.__dict__,
-    })
+        }
+    wandb_run = setup_wandb(**wandb_config)
 
 
     env = EpisodeMonitor(gym.make(args.env_name))
     eval_env = EpisodeMonitor(gym.make(args.env_name))
-    wandb_run = setup_wandb(**wandb_config)
 
     example_transition = dict(
         observations=env.observation_space.sample(),

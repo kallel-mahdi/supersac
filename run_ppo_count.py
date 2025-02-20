@@ -67,12 +67,12 @@ parser.add_argument('--seed', type=int, default=1, help='seed of the experiment'
 parser.add_argument('--torch_deterministic', default=True,action='store_true', help='if toggled, `torch.backends.cudnn.deterministic=False`')
 parser.add_argument('--cuda', action='store_true',default=True, help='if toggled, cuda will be enabled by default')
 parser.add_argument('--track', action='store_true', default=True,help='if toggled, this experiment will be tracked with Weights and Biases')
-parser.add_argument('--project_name', type=str, default='cleanRL', help='the wandb\'s project name')
+parser.add_argument('--project_name', type=str, default='PPO_OUTBOUND', help='the wandb\'s project name')
 parser.add_argument('--capture_video', action='store_true',default=False, help='whether to capture videos of the agent performances (check out `videos` folder)')
 parser.add_argument('--save_model', action='store_true',default=False, help='whether to save model into the `runs/{run_name}` folder')
 parser.add_argument('--upload_model', action='store_true',default=False, help='whether to upload the saved model to huggingface')
 parser.add_argument('--hf_entity', type=str, default='', help='the user or org name of the model repository from the Hugging Face Hub')
-parser.add_argument('--env_name', type=str, default='Hopper-v5', help='the id of the environment')
+parser.add_argument('--env_name', type=str, default='Walker2d-v5', help='the id of the environment')
 parser.add_argument('--max_steps', type=int, default=1000000, help='total timesteps of the experiments')
 parser.add_argument('--learning_rate', type=float, default=3e-4, help='the learning rate of the optimizer')
 parser.add_argument('--num_envs', type=int, default=1, help='the number of parallel game environments')
@@ -94,8 +94,8 @@ parser.add_argument('--ent_coef', type=float, default=0.0, help='coefficient of 
 parser.add_argument('--vf_coef', type=float, default=0.5, help='coefficient of the value function')
 parser.add_argument('--max_grad_norm', type=float, default=0.5, help='the maximum norm for the gradient clipping')
 parser.add_argument('--target_kl', type=float, default=None, help='the target KL divergence threshold')
-parser.add_argument('--hidden_dims', type=int, default=256, help='the hidden dimensions of the network')
-parser.add_argument('--use_layer_norm',type=str2bool, default=True, help='Toggle to use layer norm in the policy/value networks')
+parser.add_argument('--hidden_dims', type=int, default=64, help='the hidden dimensions of the network')
+parser.add_argument('--use_layer_norm',type=str2bool, default=False, help='Toggle to use layer norm in the policy/value networks')
 
 args = parser.parse_args()
 args.batch_size = int(args.num_envs * args.num_steps)
@@ -258,6 +258,7 @@ if __name__ == "__main__":
             with torch.no_grad():
                 action, logprob, _, value = agent.get_action_and_value(next_obs)
                 values[step] = value.flatten()
+                
             actions[step] = action
             logprobs[step] = logprob
 
@@ -272,6 +273,22 @@ if __name__ == "__main__":
                 wandb.log({"training/episodic_return": infos["episode"]["r"]},step=global_step,commit=False)
                 last_returns.append(infos["episode"]["r"])
 
+        with torch.no_grad():
+            total_actions = actions.numel()
+            out_of_bound = ((actions < -1) | (actions > 1)).sum().item()
+            percentage = 100 * out_of_bound / total_actions
+            wandb.log({"training/out_of_bound_percentage": percentage}, step=global_step, commit=False)
+            print(f"OOB (%): {percentage:.2f}")
+        mask = (actions < -1) | (actions > 1)
+        if mask.sum() > 0:
+            errors = torch.zeros_like(actions)
+            errors[actions < -1] = torch.abs(actions[actions < -1] + 1)
+            errors[actions > 1] = torch.abs(actions[actions > 1] - 1)
+            avg_error = errors[mask].mean().item()
+        else:
+            avg_error = 0.0
+        print(f"Average out-of-bound error: {avg_error:.4f}")
+        wandb.log({"OOB_error": avg_error}, step=global_step, commit=False)
         # bootstrap value if not done
         with torch.no_grad():
             next_value = agent.get_value(next_obs).reshape(1, -1)

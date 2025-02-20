@@ -12,9 +12,11 @@ from jaxrl_m.networks import OriginalCritic,OriginalV, Policy,ensemblize
 from jaxrl_m.typing import *
 import jax.lax as lax
 import chex
+from functools import partial
 
 def get_batch(i,batches):
     return  jax.tree.map(lambda x: x[i], batches)
+
 
 def body(i,val):
     agent,batches = val
@@ -79,9 +81,11 @@ class SACAgent(flax.struct.PyTreeNode):
         agent = agent.replace(rng=new_rng,critic=new_critics)
         
         return agent
+
+    #@partial(jax.jit,static_argnames=("num_updates",))
     
     @jax.jit
-    def update_critics_seq(agent,transitions):
+    def update_critics_seq(agent,transitions,num_updates=0 ):
                 
         n_batches = transitions['observations'].shape[0]//256
 
@@ -93,15 +97,25 @@ class SACAgent(flax.struct.PyTreeNode):
         ### Make sure we're doing at least 100 updates per epoch
         ### This is to maintain some fairness between the off-policy and on-policy critics
 
-        if n_batches <100:
+        #if n_batches <100 or num_updates is not None:
 
-            ## Or just sample  batches randomly
-            n_batches = transitions['observations'].shape[0]
+        if n_batches < 100:
+            #n_batches = jnp.maximum(100,num_updates)
             n_batches = 100
-            idxs = jax.random.choice(agent.rng,a=transitions['observations'].shape[0], shape=(n_batches,256), replace=True)
+            idxs = jax.random.choice(agent.rng, a=transitions['observations'].shape[0], shape=(n_batches, 256), replace=True)
 
         batches = jax.vmap(lambda i: jax.tree.map(lambda x: x[i], transitions))(idxs)
         agent,batches = jax.lax.fori_loop(0,n_batches,body,(agent,batches))
+        
+        return agent
+    
+    @partial(jax.jit,static_argnames=("num_updates",))
+    def update_critics_seq2(agent,transitions,num_updates=2000 ):
+                
+        idxs = jax.random.choice(agent.rng, a=transitions['observations'].shape[0], shape=(num_updates, 256), replace=True)
+
+        batches = jax.vmap(lambda i: jax.tree.map(lambda x: x[i], transitions))(idxs)
+        agent,batches = jax.lax.fori_loop(0,num_updates,body,(agent,batches))
         
         return agent
 
@@ -261,7 +275,8 @@ class SACAgent(flax.struct.PyTreeNode):
             
         
         idx = jnp.arange(adv.shape[0])
-        #grads,info = jax.grad(actor_loss_fn,has_aux=True)(agent.actor.params,adv,batch,idx)
+        if agent.config['store_grads']:
+            grads,info = jax.grad(actor_loss_fn,has_aux=True)(agent.actor.params,adv,batch,idx)
     
         if agent.config["minibatch"]:
         
@@ -283,10 +298,14 @@ class SACAgent(flax.struct.PyTreeNode):
             
 
             agent = agent.replace(rng=new_rng, actor=new_actor,temp=new_temp)
+
+        info = {**actor_info, **temp_info}  
+        if agent.config['store_grads']:
+                        info['grads'] = grads
             
-        return agent, {**actor_info,**temp_info
-                       #,"grads":grads
-                       }
+        return agent,info
+                    
+                    
 
             
         
@@ -360,6 +379,7 @@ def create_learner(
                 state_dependent_std=True,
                 tanh_squash_distribution=False,## This should be false
                 tanh_squash_actions=True, ## This should be true
+                store_grads = False,
            
                 
                 
@@ -417,6 +437,7 @@ def create_learner(
             tanh_squash_actions=tanh_squash_actions,
             gae_lambda=gae_lambda,
             minibatch=minibatch,
+            store_grads=store_grads,
       
         ))
 

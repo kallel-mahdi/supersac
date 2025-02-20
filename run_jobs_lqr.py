@@ -34,10 +34,7 @@ for cfg in configs :
     # Add random time pause
     #time.sleep(random.uniform(0.1,3))
 
-    command = f'sbatch job_file_lqr.sh\
-    --seed  {cfg[0]} --state_dim {cfg[1]} --a_dim {cfg[2]} \
-    
-    >./null 2>&1 & '
+    command = f'sbatch job_file_lqr.sh --seed  {cfg[0]} --state_dim {cfg[1]} --a_dim {cfg[2]} >./null 2>&1 & '
     
     print(command)
 

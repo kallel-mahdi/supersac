@@ -31,7 +31,7 @@ args = parser.parse_args()
 ##############################
 
 np.random.seed(42)
-seeds = list(np.random.randint(0, 1e6, 1))
+seeds = list(np.random.randint(0, 1e6, 10))
 configs = itertools.product(
     seeds,
     ["InvertedDoublePendulum-v5", "Hopper-v5", "Walker2d-v5", "HalfCheetah-v5", "Ant-v5", "Humanoid-v5"],
@@ -54,7 +54,7 @@ for cfg in configs:
 
     command = (
         f'sbatch job_file_ppo.sh '
-        f'python run_ppo.py '
+        #f'python run_ppo.py '
         f'--seed {cfg[0]} --env_name {cfg[1]} --project_name {cfg[2]} '
         f'--gamma {cfg[3]} --max_steps {cfg[4]} --normalize_reward {cfg[5]} '
         f'--full_batch {cfg[6]} --gae_lambda {cfg[7]} '

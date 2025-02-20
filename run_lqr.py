@@ -24,9 +24,9 @@ from jaxrl_m.ppo_plus import create_learner
 
 
 
-jax.config.update('jax_default_matmul_precision', 'float32')
-jax.config.update("jax_debug_nans", True)
-logging.basicConfig(level=logging.CRITICAL)
+# jax.config.update('jax_default_matmul_precision', 'float32')
+# jax.config.update("jax_debug_nans", True)
+logging.basicConfig(level=logging.debug)
 # Set env variables
 os.environ["WANDB_API_KEY"] = "28996bd59f1ba2c5a8c3f2cc23d8673c327ae230"
 os.environ['PYTHONHASHSEED'] = '1'
@@ -47,16 +47,29 @@ def evaluate_critic(agent, test_transitions):
 
     return jnp.sqrt((Q - Q_true) ** 2).mean(), (Q - Q_true).mean()
 
+# def compute_gradient(agent, transitions):
+#     K = np.array(agent.actor.params['means']['kernel'])
+#     noise = jnp.diag(jnp.exp(agent.actor.params['log_stds']))  # For state dependent noise but I think formulation is without
+
+#     grad = np.zeros((1, np.size(K)))
+#     for obs, action, discount in zip(transitions["observations"], transitions["actions"], transitions["discounts"]):
+#         grad += discount * compute_lqr_Q_gaussian_policy_gradient_K(obs, action, env, -K.T, noise)
+
+#     grad = grad / (transitions["discounts"].sum())
+#     return grad
+
 def compute_gradient(agent, transitions):
+    """ This version doesn't use gradient discounting"""
+
     K = np.array(agent.actor.params['means']['kernel'])
     noise = jnp.diag(jnp.exp(agent.actor.params['log_stds']))  # For state dependent noise but I think formulation is without
 
     grad = np.zeros((1, np.size(K)))
     for obs, action, discount in zip(transitions["observations"], transitions["actions"], transitions["discounts"]):
-        grad += discount * compute_lqr_Q_gaussian_policy_gradient_K(obs, action, env, -K.T, noise)
+        grad += compute_lqr_Q_gaussian_policy_gradient_K(obs, action, env, -K.T, noise)
 
-    grad = grad / (transitions["discounts"].sum())
     return grad
+
 
 def get_batch(i, batches):
     return jax.tree.map(lambda x: x[i], batches)
@@ -86,14 +99,14 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--algo_name', type=str, default='superppo', help='the name of the RL algorithm')
 parser.add_argument('--episode_based', type=str2bool, default=False)
 parser.add_argument('--seed', type=int, default=42)
-parser.add_argument('--project_name', type=str, default="gradient_exps_tmp")
-parser.add_argument('--max_steps', type=int, default=1000000)
-parser.add_argument('--max_episode_steps', type=int, default=500)
-parser.add_argument('--num_rollouts', type=int, default=5)
+parser.add_argument('--project_name', type=str, default="RLC_GRAD_EXPS")
+parser.add_argument('--max_steps', type=int, default=250_000)
+parser.add_argument('--max_episode_steps', type=int, default=1000)
+parser.add_argument('--policy_steps', type=int, default=5120)
 parser.add_argument('--gamma', type=float, default=0.99)
 parser.add_argument('--on_policy_data', type=str2bool, default=False)
-parser.add_argument('--state_dim', type=int, default=4)
-parser.add_argument('--a_dim', type=int, default=2)
+parser.add_argument('--state_dim', type=int, default=11)
+parser.add_argument('--a_dim', type=int, default=3)
 args = parser.parse_args()
 
 # Environment setup
@@ -130,10 +143,10 @@ example_transition = dict(
     truncateds=0.0,
 )
 
-buffer_size = args.num_rollouts * args.max_episode_steps if args.on_policy_data else 100000
+buffer_size =  args.policy_steps if args.on_policy_data else args.policy_steps * 10
 replay_buffer = ReplayBuffer.create(example_transition, size=int(buffer_size))
-actor_buffer = ActorReplayBuffer.create(example_transition, size=int(args.num_rollouts * args.max_episode_steps))
-test_buffer = ActorReplayBuffer.create(example_transition, size=int(args.num_rollouts * args.max_episode_steps))
+actor_buffer = ActorReplayBuffer.create(example_transition, size=args.policy_steps)
+test_buffer = ActorReplayBuffer.create(example_transition, size=args.policy_steps)
 
 args_dict = {
     "seed": args.seed,
@@ -160,25 +173,26 @@ args_dict = {
     "use_bias": False,
     "temp_lr": 3e-4,
     "b2": 0.999,
-    "gae_lambda": 0.5,
+    "gae_lambda": 0.,
     "minibatch": True,
     "activation_fn": "tanh",
     "stable_scheme": True,
     "bound_actions": False,
     "tanh_squash_distribution": False,
     "tanh_squash_actions": False,
+    "store_grads": True,
 }
 
 args_dict_min = copy.deepcopy(args_dict)
 args_dict_no = copy.deepcopy(args_dict)
 args_dict_min["min_target"] = True
-args_dict_no["discount_actor"] = False
+args_dict_no["use_layer_norm"] = False
 
 agent = create_learner(**args_dict)
-agent = agent.replace(config=unfreeze(agent.config))
-agent_on = create_learner(**args_dict)
-agent_no = create_learner(**args_dict_no)
-agent_min = create_learner(**args_dict_min)
+#agent = agent.replace(config=unfreeze(agent.config))
+agent_on = create_learner(**args_dict) ## On policy
+agent_no = create_learner(**args_dict_no) ## No layer norm
+agent_min = create_learner(**args_dict_min) ## Minimum of two critics
 
 # Main training loop
 exploration_metrics = dict()
@@ -194,12 +208,12 @@ with tqdm.tqdm(total=max_steps) as pbar:
             logging.debug('policy rollout')
             replay_buffer, actor_buffer, policy_return, undisc_policy_return, num_steps = rollout_policy_lqr(
                 agent, env, exploration_rng, replay_buffer, actor_buffer, eval=False,
-                num_rollouts=args.num_rollouts, discount=args.gamma, max_length=args.max_episode_steps
+                num_steps=5120, discount=args.gamma, max_length=args.max_episode_steps
             )
 
             _, test_buffer, _, _, _ = rollout_policy_lqr(
                 agent, env, exploration_rng, None, test_buffer, eval=False,
-                num_rollouts=args.num_rollouts, discount=args.gamma, max_length=args.max_episode_steps
+                num_steps=5120, discount=args.gamma, max_length=args.max_episode_steps
             )
 
             print(f'policy_return: {policy_return}, undisc_policy_return {undisc_policy_return}')
@@ -211,28 +225,34 @@ with tqdm.tqdm(total=max_steps) as pbar:
 
             if replay_buffer.size > start_steps:
                 # Update critics
-                logging.debug('update critics')
                 transitions = replay_buffer.get_all()
-                agent = agent.update_critics_seq(transitions)
-                agent_min = agent_min.update_critics_seq(transitions)
+                agent = agent.update_critics_seq2(transitions,num_updates=1000)
+                agent_min = agent_min.update_critics_seq2(transitions,num_updates=1000)
+                agent_no = agent_no.update_critics_seq2(transitions,num_updates=1000)
 
                 transitions = actor_buffer.get_all()
-                agent_on = agent_on.update_critics_seq(transitions)
-                agent_no = agent_no.update_critics_seq(transitions)
+                agent_on = agent_on.update_critics_seq2(transitions,num_updates=1000)
+               
 
                 a, b = evaluate_critic(agent, test_buffer.get_all())
                 c, d = evaluate_critic(agent_min, test_buffer.get_all())
                 e, f = evaluate_critic(agent_on, test_buffer.get_all())
+                g, h = evaluate_critic(agent_no, test_buffer.get_all())
 
-                wandb.log({"test/normal_error": a, "test/normal_bias": b, "test/min_error": c, "test/min_bias": d,
-                           "test/on_error": e, "test/on_bias": f}, step=int(i))
+                wandb.log({"test/normal_error": a, "test/normal_bias": b,
+                           "test/min_error": c, "test/min_bias": d,
+                           "test/on_error": e, "test/on_bias": f,
+                           "test/no_error": g, "test/no_bias": h}, step=int(i))
 
                 a, b = evaluate_critic(agent, actor_buffer.get_all())
                 c, d = evaluate_critic(agent_min, actor_buffer.get_all())
                 e, f = evaluate_critic(agent_on, actor_buffer.get_all())
+                g,h = evaluate_critic(agent_no, actor_buffer.get_all())
 
-                wandb.log({"train/normal_error": a, "train/normal_bias": b, "train/min_error": c, "train/min_bias": d,
-                           "train/on_error": e, "train/on_bias": f}, step=int(i))
+                wandb.log({"train/normal_error": a, "train/normal_bias": b,
+                           "train/min_error": c, "train/min_bias": d,
+                           "train/on_error": e, "train/on_bias": f,
+                           "train/no_error": g, "train/no_bias": h}, step=int(i))
 
                 actor_batch = actor_buffer.get_all()
                 true = compute_gradient(agent, actor_batch).reshape(-1)
@@ -246,11 +266,11 @@ with tqdm.tqdm(total=max_steps) as pbar:
                 _, actor_update_info = agent_on.update_actor(actor_batch)
                 estimate_on = actor_update_info["grads"]["means"]["kernel"]
 
-                agent.config["discount_actor"] = False
                 _, actor_update_info = agent_no.update_actor(actor_batch)
                 estimate_no = actor_update_info["grads"]["means"]["kernel"]
-                agent.config["discount_actor"] = True
+              
 
+                tmp = jnp.dot(estimate.flatten(), estimate_no.flatten()) / (jnp.linalg.norm(estimate.flatten()) * jnp.linalg.norm(estimate_no.flatten()))
                 true_estimate = jnp.dot(true.flatten(), estimate.flatten()) / (jnp.linalg.norm(true.flatten()) * jnp.linalg.norm(estimate.flatten()))
                 true_min = jnp.dot(true.flatten(), estimate_min.flatten()) / (jnp.linalg.norm(true.flatten()) * jnp.linalg.norm(estimate_min.flatten()))
                 true_on = jnp.dot(true.flatten(), estimate_on.flatten()) / (jnp.linalg.norm(true.flatten()) * jnp.linalg.norm(estimate_on.flatten()))
@@ -270,8 +290,11 @@ with tqdm.tqdm(total=max_steps) as pbar:
                 agent, actor_update_info = agent.update_actor(actor_batch)
                 agent_min = agent_min.replace(actor=agent.actor)
                 agent_on = agent_on.replace(actor=agent.actor)
+                agent_no = agent_on.replace(actor=agent.actor)
 
                 # Log training info
                 exploration_metrics = {f'exploration/disc_return': policy_return}
                 train_metrics = {f'training/{k}': v for k, v in update_info.items()}
                 train_metrics['training/undisc_return'] = undisc_policy_return
+
+                wandb.log({**exploration_metrics, **train_metrics}, step=int(i))

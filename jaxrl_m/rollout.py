@@ -129,19 +129,19 @@ def rollout_policy2(agent,env,exploration_rng,
 
 def rollout_policy_lqr(agent,env,exploration_rng,
                    replay_buffer=None,actor_buffer=None,
-                   eval=False,num_rollouts=5,discount=0.99,max_length=500):
+                   eval=False,num_steps=10240,discount=0.99,max_length=500):
     
     if actor_buffer is not None:
         actor_buffer = actor_buffer.reset()
     obs = env.reset()  
     n_steps,n_rollouts,episode_step,disc,mask = 0,0,0,1.,1.
 
-    max_steps = num_rollouts*max_length
-    observations,disc_masks,rewards = np.zeros((max_steps,obs.shape[0])),np.zeros((max_steps,)),np.zeros((max_steps,))
-    policy_returns = np.zeros((num_rollouts,))
+  
+    policy_returns,undisc_returns = [],[]
+    policy_return,undisc_return = 0.,0.
+  
     
-    while n_rollouts < num_rollouts:
-        
+    while n_steps < num_steps:
         
         if eval:
             action = agent.deterministic_action(obs)
@@ -170,23 +170,27 @@ def rollout_policy_lqr(agent,env,exploration_rng,
         
         obs = next_obs
         disc *= (discount*mask)
+        policy_return += reward * disc
+        undisc_return += reward
         episode_step += 1
         n_steps += 1
         
-        if done or n_steps%max_length==0:
-            policy_returns[n_rollouts] = (disc_masks[max_length*n_rollouts:max_length*(n_rollouts+1)]*rewards[max_length*n_rollouts:max_length*(n_rollouts+1)]).sum()
+        if done or truncated:
+            policy_returns.append(policy_return)
+            undisc_returns.append(undisc_return)
+            policy_return = 0.  
+            undisc_return = 0.
             obs = env.reset()
             n_rollouts += 1
             episode_step = 0
             disc,mask = 1.,1.
           
             
-            
-    policy_return = policy_returns.mean()
-    undisc_policy_return = rewards.sum()/num_rollouts
+    policy_return = np.array(policy_returns).mean()
+    undisc_return = np.array(undisc_returns).mean()
    
     
-    return replay_buffer,actor_buffer,policy_return,undisc_policy_return,n_steps
+    return replay_buffer,actor_buffer,policy_return,undisc_return,n_steps
 
 
 

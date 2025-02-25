@@ -17,7 +17,7 @@ def str2bool(v):
 parser = argparse.ArgumentParser()
 parser.add_argument('--seed',type=int,default=42) 
 parser.add_argument('--env_name',type=str,default="Walker2d-v5")
-parser.add_argument('--project_name',type=str,default="PPO_PLUS_SUPER_A40") 
+parser.add_argument('--project_name',type=str,default="DMC_DOG") 
 
 parser.add_argument('--activation_fn',type=str,default="tanh") 
 parser.add_argument('--discount_entropy',type=str2bool,default=False)
@@ -44,7 +44,7 @@ args = parser.parse_args()
 
 np.random.seed(args.seed)
 seeds = list(np.random.randint(0,1e6,5))
-configs = itertools.product(seeds,["InvertedDoublePendulum-v5","Hopper-v5","Walker2d-v5","HalfCheetah-v5","Ant-v5","Humanoid-v5"],[args.project_name],
+configs = itertools.product(seeds,["walk","stand","trot","run"],[args.project_name],
                             [args.gamma],[args.temperature],[args.policy_steps],
                             [args.num_critics],[args.activation_fn],[args.discount_entropy],[args.gae_lambda],[args.buffer_size],
                             [args.max_episode_steps],[args.use_layer_norm],[args.bound_actions],[args.on_policy_data],[args.clipping_ratio],[args.min_target])

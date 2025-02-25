@@ -21,6 +21,7 @@ import wandb
 import numpy as jnp
 from collections import deque
 import copy
+from jaxrl_m.dmc import DMCGym
 
 os.environ["WANDB_API_KEY"]="28996bd59f1ba2c5a8c3f2cc23d8673c327ae230"
 np.seterr(all='raise')
@@ -72,7 +73,7 @@ parser.add_argument('--capture_video', action='store_true',default=False, help='
 parser.add_argument('--save_model', action='store_true',default=False, help='whether to save model into the `runs/{run_name}` folder')
 parser.add_argument('--upload_model', action='store_true',default=False, help='whether to upload the saved model to huggingface')
 parser.add_argument('--hf_entity', type=str, default='', help='the user or org name of the model repository from the Hugging Face Hub')
-parser.add_argument('--env_name', type=str, default='Hopper-v5', help='the id of the environment')
+parser.add_argument('--env_name', type=str, default='stand', help='the id of the environment')
 parser.add_argument('--max_steps', type=int, default=1000000, help='total timesteps of the experiments')
 parser.add_argument('--learning_rate', type=float, default=3e-4, help='the learning rate of the optimizer')
 parser.add_argument('--num_envs', type=int, default=1, help='the number of parallel game environments')
@@ -102,6 +103,8 @@ args.batch_size = int(args.num_envs * args.num_steps)
 args.minibatch_size = int(args.batch_size // args.num_minibatches)
 args.num_iterations = args.max_steps // args.batch_size
 
+if args.env_name in ["walk","stand","trot","run","Humanoid-v5"]: args.max_steps = 5_000_000
+
 args = parser.parse_args()
 
 print(args.full_batch)
@@ -110,10 +113,16 @@ print(args.full_batch)
 
 
 
-def make_env(env_name, idx, capture_video, run_name, gamma):
+def make_env(env_name, idx, capture_video, run_name, gamma,evaluation=False):
     def thunk():
         
-        env = gym.make(env_name,max_episode_steps=1000)
+        
+        if args.env_name in ["walk","stand","trot","run"]:
+            env = DMCGym("dog",args.env_name)
+        
+        else : env = gym.make(env_name,max_episode_steps=1000)
+        
+        
         env = gym.wrappers.FlattenObservation(env)  # deal with dm_control's Dict observation space
         env = gym.wrappers.RecordEpisodeStatistics(env)
         env = gym.wrappers.ClipAction(env)
@@ -122,9 +131,9 @@ def make_env(env_name, idx, capture_video, run_name, gamma):
         if args.normalize_observation:
             env = gym.wrappers.NormalizeObservation(env)
         env = gym.wrappers.TransformObservation(env, lambda obs: np.clip(obs, -10, 10),env.observation_space)
-        if args.normalize_reward :
+        if args.normalize_reward and not evaluation:
             env = gym.wrappers.NormalizeReward(env, gamma=gamma)
-        env = gym.wrappers.TransformReward(env, lambda reward: np.clip(reward, -10, 10))
+            env = gym.wrappers.TransformReward(env, lambda reward: np.clip(reward, -10, 10))
         return env
 
     return thunk
@@ -216,6 +225,15 @@ if __name__ == "__main__":
     envs = gym.vector.SyncVectorEnv(
         [make_env(args.env_name, i, args.capture_video, run_name, args.gamma) for i in range(args.num_envs)]
     )
+    
+    eval_env = gym.vector.SyncVectorEnv(
+        [make_env(args.env_name, i, args.capture_video, run_name, args.gamma,evaluation=True) for i in range(args.num_envs)]
+    )
+    
+    #envs = make_env(args.env_name,0,args.capture_video,run_name,args.gamma)()
+    #eval_env = make_env(args.env_name,0,args.capture_video,run_name,args.gamma,evaluation=True)()
+    
+    
     assert isinstance(envs.single_action_space, gym.spaces.Box), "only continuous action space is supported"
     
     
@@ -360,7 +378,14 @@ if __name__ == "__main__":
     
             unlogged_steps = 0
            
-            eval_env = copy.deepcopy(envs)
+            #eval_env = copy.deepcopy(envs)
+            #eval_env.ret_rms = envs.ret_rms
+            #print(envs.envs[0].env.env.obs_rms)
+            #print(eval_env.envs[0].env.env.obs_rms)
+            
+            eval_env.envs[0].env.obs_rms = envs.envs[0].env.env.env.obs_rms 
+
+            
 
             print("heeeeeeeeeeeeeeeeere")
             undisc_policy_return = rollout_policy_ppo(

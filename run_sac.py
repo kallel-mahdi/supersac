@@ -24,6 +24,7 @@ from jaxrl_m.wandb import setup_wandb, default_wandb_config, get_flag_dict
 from jaxrl_m.evaluation import supply_rng, evaluate, flatten, EpisodeMonitor
 from jaxrl_m.dataset import ReplayBuffer
 from jaxrl_m.rollout import rollout_policy2,rollout_policy
+from jaxrl_m.dmc import DMCGym
 
 import wandb
 import random
@@ -47,7 +48,7 @@ parser.add_argument('--algo_name', type=str, default="sac")
 parser.add_argument('--max_steps', type=int, default=1000000, help='Number of training steps')
 
 args = parser.parse_args()
-if args.env_name == "Humanoid-v5" : args.max_steps = 5000000 
+if args.env_name in ["Humanoid-v5","walk","stand","trot","run"] : args.max_steps = 5000000 
 random.seed(args.seed)
 np.random.seed(args.seed)
 
@@ -237,6 +238,10 @@ def train():
 
     env = EpisodeMonitor(gym.make(args.env_name))
     eval_env = EpisodeMonitor(gym.make(args.env_name))
+    
+    if args.env_name in ["walk","stand","trot","run"]:
+        env = DMCGym("dog",args.env_name)
+        eval_env = DMCGym("dog",args.env_name)
 
     example_transition = dict(
         observations=env.observation_space.sample(),

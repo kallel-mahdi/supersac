@@ -52,7 +52,7 @@ parser.add_argument('--seed',type=int,default=42)
 
 parser.add_argument('--algo_name', type=str, default='superppo', help='the name of the RL algorithm')
 parser.add_argument('--project_name',type=str,default="single_exp") 
-parser.add_argument('--env_name',type=str,default="HumanoidStandup-v5") 
+parser.add_argument('--env_name',type=str,default="run") 
 parser.add_argument('--max_steps',type=int,default=1_000_000) 
 parser.add_argument('--max_episode_steps',type=int,default=1000) 
 parser.add_argument('--gamma',type=float,default=0.99)
@@ -108,7 +108,7 @@ def train(args):
     
     
         
-    if args.env_name in ["Humanoid-v5","HumanoidStandup-v5","walk","stand","trot"]: args.max_steps = 5_000_000
+    if args.env_name in ["Humanoid-v5","HumanoidStandup-v5","walk","stand","trot","run"]: args.max_steps = 5_000_000
     elif args.env_name == "InvertedDoublePendulum-v5": args.max_steps = 500_000
     if args.on_policy_data: args.buffer_size = args.policy_steps
     
@@ -123,7 +123,7 @@ def train(args):
         }
     wandb_run = setup_wandb(**wandb_config)
     
-    if args.env_name in ["walk","stand","trot"]:
+    if args.env_name in ["walk","stand","trot","run"]:
         env = DMCGym("dog",args.env_name)
         eval_env = DMCGym("dog",args.env_name)
     

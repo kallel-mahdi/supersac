@@ -44,7 +44,7 @@ args = parser.parse_args()
 
 np.random.seed(args.seed)
 seeds = list(np.random.randint(0,1e6,5))
-configs = itertools.product(seeds,["walk","stand","trot","run"],[args.project_name],
+configs = itertools.product(seeds,["Hopper-v5","Walker2d-v5","HalfCheetah-v5","Ant-v5"],[args.project_name],
                             [args.gamma],[args.temperature],[args.policy_steps],
                             [args.num_critics],[args.activation_fn],[args.discount_entropy],[args.gae_lambda],[args.buffer_size],
                             [args.max_episode_steps],[args.use_layer_norm],[args.bound_actions],[args.on_policy_data],[args.clipping_ratio],[args.min_target])

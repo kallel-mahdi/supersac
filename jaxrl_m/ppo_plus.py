@@ -120,7 +120,7 @@ class SACAgent(flax.struct.PyTreeNode):
         return agent
 
     
-    @jax.jit
+    #@jax.jit
     def update_actor(agent, batch: Batch):
         
       
@@ -160,67 +160,81 @@ class SACAgent(flax.struct.PyTreeNode):
                 actor_params,
                 adv,
                 batch,
-                idx,
         ):
+            """Compute actor loss for PPO.
             
-            ### Compute probability of old actions under new policy
+            Args:
+                actor_params: Parameters of the actor network
+                adv: Advantage estimates
+                batch: Batch of transitions
             
-
-            batch = jax.tree_map(lambda x:x[idx],batch)
-            adv = adv[idx]
+            Returns:
+                Tuple of (actor_loss, info_dict)
+            """
+            discounts, masks, logp = batch["discounts"], batch["masks"], batch["log_probs"]
             
-            discounts,masks,logp = batch["discounts"],batch["masks"],batch["log_probs"]
+            #jax.debug.print('masks: {}', masks.sum()))
             
-            #jax.debug.print("🤯 HELLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLL{x} 🤯", x=discounts[:100])
-            dist = agent.actor(batch["observations"],params=actor_params)
+            # Compute probability of actions under new policy
+            dist = agent.actor(batch["observations"], params=actor_params)
             pre_actions = batch["pre_actions"]
             pre_log_probs = dist.log_prob(pre_actions)
             
+            # Apply tanh squashing correction if needed
             if agent.config["tanh_squash_actions"]:
-                new_logp = pre_log_probs - jnp.sum(2 * (jnp.log(2) - pre_actions - jax.nn.softplus(-2 * pre_actions)), axis=-1)
-            
-            else : 
+                new_logp = pre_log_probs - jnp.sum(2 * (jnp.log(2) + pre_actions - jax.nn.softplus(2 * pre_actions)), axis=-1)
+            else:
                 new_logp = pre_log_probs
             
-            
+            # Calculate importance sampling ratio
             logratio = new_logp - logp
             ratio = jnp.exp(logratio)
 
-            # Calculate how much policy is changing
+            # Calculate approximate KL divergence for monitoring
             approx_kl = ((ratio - 1) - logratio).mean()
 
-            # Policy loss
-            clip_coef = agent.config["clipping_ratio"] ##default 0.2 
+            # PPO clipped objective
+            clip_coef = agent.config["clipping_ratio"]
             
-            actor_loss1 = masks*adv * ratio
-            actor_loss2 = masks*adv * jnp.clip(ratio, 1 - clip_coef, 1 + clip_coef)
+            actor_loss1 = masks * adv * ratio
+            actor_loss2 = masks * adv * jnp.clip(ratio, 1 - clip_coef, 1 + clip_coef)
 
+            # Apply discounting if configured
             if agent.config['discount_actor']:
-                #jax.debug.print("🤯 HELLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLL{x} 🤯", x=discounts[:100])
-                actor_loss = -jnp.minimum(discounts*actor_loss1,discounts*actor_loss2).sum()/(discounts.sum())
-            else : 
-                actor_loss = -jnp.minimum(actor_loss1,actor_loss2).mean()
+                actor_loss = -jnp.minimum(discounts * actor_loss1, discounts * actor_loss2).sum() / (discounts.sum())
+            else:
+                actor_loss = -jnp.minimum(actor_loss1, actor_loss2).mean()
                 
-            ### Pad Q and logits because actor buffer is padded ###
+            # Calculate entropy
             logp = masks * new_logp
             
             if agent.config['discount_entropy']:
-                entropy = -1 * (discounts*logp).sum()/(discounts.sum())
-            else : 
-                entropy = -1 * (masks*logp).sum()/(masks.sum())
+                entropy = -1 * (discounts * logp).sum() / (discounts.sum())
+            else:
+                entropy = -1 * (masks * logp).sum() / (masks.sum())
             
             return actor_loss, {
                 'actor_loss': actor_loss,
                 'entropy': entropy,
-                'approx_kl':approx_kl
+                'approx_kl': approx_kl
             }
             
         
         def temp_loss_fn(temp_params, entropy, target_entropy):
+            """Compute temperature loss for entropy regularization.
+            
+            Args:
+                temp_params: Temperature parameters
+                entropy: Current policy entropy
+                target_entropy: Target entropy value
+                
+            Returns:
+                Tuple of (temp_loss, info_dict)
+            """
             temperature = agent.temp(params=temp_params)
             temp_loss = (temperature * (entropy - target_entropy)).mean()
 
-            ### Clip temperature to minimum value
+            # Prevent temperature from going too low
             temp_loss = jax.lax.cond(
                         jnp.logical_and(temperature < 0.001, temp_loss > 0),
                         lambda _: 0.0,
@@ -236,76 +250,61 @@ class SACAgent(flax.struct.PyTreeNode):
 
         new_rng, curr_key, next_key = jax.random.split(agent.rng, 3)
 
-        observations,next_observations = batch["observations"],batch["next_observations"]
+        observations, next_observations = batch["observations"], batch["next_observations"]
         
+        # Include the last next_observation to compute value for all states
         observations = jnp.concatenate([observations, next_observations[-1][None]], axis=0)
         
-        def evaluate(observations,key):
+        def evaluate(observations, key):
+            """Evaluate the value function at given observations."""
+            actions, log_p, _ = agent.sample_actions(observations, seed=key)
+            q_all = agent.critic(observations, actions)
+            v = jnp.mean(q_all, axis=0)
             
-            actions, log_p,_ = agent.sample_actions(observations,seed=key)
-            q_all = agent.critic(observations,actions)
-            v = jnp.mean(q_all,axis=0)
-            
-            return v,log_p
+            return v, log_p
         
+        # Compute advantages using GAE if lambda > 0, otherwise use Q-V
         if agent.config['gae_lambda'] > 0.:
-        
-            vs,hs = jax.vmap(evaluate,in_axes=(None,0))(observations,jax.random.split(curr_key,10))
+            # Average over multiple evaluations for stability
+            vs, hs = jax.vmap(evaluate, in_axes=(None, 0))(observations, jax.random.split(curr_key, 10))
             
-            tmp_v,tmp_logp = jnp.mean(vs,axis=0),jnp.mean(hs,axis=0)
-            tmp_v -= agent.temp()*tmp_logp
-            v,next_v= tmp_v[:-1],tmp_v[1:]
+            tmp_v, tmp_logp = jnp.mean(vs, axis=0), jnp.mean(hs, axis=0)
+            tmp_v -= agent.temp() * tmp_logp
+            v, next_v = tmp_v[:-1], tmp_v[1:]
             
-            rewards = batch["rewards"]-agent.temp()*batch["log_probs"]
-            dones = jnp.bool(1-batch["masks"])
+            rewards = batch["rewards"] - agent.temp() * batch["log_probs"]
+            dones = jnp.bool(1 - batch["masks"])
             truncations = jnp.bool(batch["truncateds"])
             
-            adv,_ = compute_gae(rewards.squeeze(),v.squeeze(),next_v.squeeze(),dones.squeeze(),truncations.squeeze(),
-                                gamma=agent.config['discount'],lam=agent.config['gae_lambda'])
+            adv, _ = compute_gae(rewards.squeeze(), v.squeeze(), next_v.squeeze(), dones.squeeze(), truncations.squeeze(),
+                                gamma=agent.config['discount'], lam=agent.config['gae_lambda'])
             adv = adv.reshape(-1)
-
-        else :   
-
-            ### Compute advantage for the fixed states AND actions
-            vs,hs = jax.vmap(evaluate,in_axes=(None,0))(batch["observations"],jax.random.split(curr_key,10))        
-            tmp_v,tmp_logp = jnp.mean(vs,axis=0),jnp.mean(hs,axis=0)
-            q = agent.critic(batch["observations"],batch["actions"]).mean(axis=0)
-            adv = (q-agent.temp()*batch["log_probs"]) - (tmp_v - agent.temp() *tmp_logp)### This one worked
+        else:
+            # Compute advantage as Q(s,a) - V(s)
+            vs, hs = jax.vmap(evaluate, in_axes=(None, 0))(batch["observations"], jax.random.split(curr_key, 10))        
+            tmp_v, tmp_logp = jnp.mean(vs, axis=0), jnp.mean(hs, axis=0)
+            q = agent.critic(batch["observations"], batch["actions"]).mean(axis=0)
+            adv = (q - agent.temp() * batch["log_probs"]) - (tmp_v - agent.temp() * tmp_logp)
             adv = adv.reshape(-1)
             
         
-        idx = jnp.arange(adv.shape[0])
         if agent.config['store_grads']:
-            grads,info = jax.grad(actor_loss_fn,has_aux=True)(agent.actor.params,adv,batch,idx)
-    
-        if agent.config["minibatch"]:
-        
-            indexes = jnp.arange(adv.shape[0])
-            indexes = jax.random.permutation(new_rng, indexes)
-            batch_size = 250
-            num_actor_updates = adv.shape[0] // batch_size
-            index_batches = jnp.split(indexes[:batch_size * num_actor_updates], num_actor_updates)
-        
-        else : index_batches = [jnp.arange(adv.shape[0]) for i in range(agent.config["num_actor_updates"])]
-            
-     
-        for idx in index_batches:
-            
-            if not agent.config['minibatch']: idx = jnp.arange(adv.shape[0])
-            
-            new_actor, actor_info = agent.actor.apply_loss_fn(actor_loss_fn,True,adv,batch,idx)#adv
-            new_temp, temp_info = agent.temp.apply_loss_fn(temp_loss_fn,True,actor_info['entropy'],agent.config['target_entropy'])
-            
+            grads, info = jax.grad(actor_loss_fn, has_aux=True)(agent.actor.params, adv, batch)
 
-            agent = agent.replace(rng=new_rng, actor=new_actor,temp=new_temp)
+        # Update actor and temperature
+        new_actor, actor_info = agent.actor.apply_loss_fn(actor_loss_fn, True, adv, batch)
+        new_temp, temp_info = agent.temp.apply_loss_fn(temp_loss_fn, True, actor_info['entropy'], agent.config['target_entropy'])
+            
+        # Create updated agent
+        agent = agent.replace(rng=new_rng, actor=new_actor, temp=new_temp)
 
+        # Combine info dictionaries
         info = {**actor_info, **temp_info}  
+        
         if agent.config['store_grads']:
-                        info['grads'] = grads
+            info['grads'] = grads
             
-        return agent,info
-                    
-                    
+        return agent, info
 
             
         

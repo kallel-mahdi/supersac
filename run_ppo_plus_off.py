@@ -42,23 +42,32 @@ os.environ['PYTHONHASHSEED'] = '1'
 os.environ['TF_CUDNN_DETERMINISTIC'] = '1'
 os.environ['TF_DETERMINISTIC_OPS'] = '1'
 os.environ['XLA_FLAGS']='--xla_gpu_deterministic_ops=true'
+# Enable NaN checking in JAX
+
 
 
 
 ##############################
+# Set JAX default precision to highest
+# Enable float64 precision in JAX
+# Set JAX_TRACEBACK_FILTERING=off to include JAX error traceback details
+jax.config.update("jax_debug_nans", True)
+os.environ['JAX_TRACEBACK_FILTERING'] = 'off'
+# jax.config.update("jax_enable_x64", True)
+# jax.config.update("jax_default_matmul_precision", "highest")
 parser = argparse.ArgumentParser()
 
-parser.add_argument('--seed',type=int,default=42) 
+parser.add_argument('--seed',type=int,default=21) 
 
-parser.add_argument('--algo_name', type=str, default='superppo', help='the name of the RL algorithm')
+parser.add_argument('--algo_name', type=str, default='ppo_plus_off', help='the name of the RL algorithm')
 parser.add_argument('--project_name',type=str,default="single_exp_off") 
-parser.add_argument('--env_name',type=str,default="InvertedDoublePendulum-v5") 
+parser.add_argument('--env_name',type=str,default="Walker2d-v5") 
 parser.add_argument('--max_steps',type=int,default=1_000_000) 
 parser.add_argument('--max_episode_steps',type=int,default=1000) 
 parser.add_argument('--gamma',type=float,default=0.99)
 parser.add_argument('--entropy_coeff',type=float,default=1.) 
 
-parser.add_argument('--num_critics',type=int,default=5)
+parser.add_argument('--num_critics',type=int,default=2)
 parser.add_argument('--hidden_dims',type=int,default=256) 
 parser.add_argument('--critic_lr',type=float,default=3e-4) 
 parser.add_argument('--actor_lr',type=float,default=3e-4) 
@@ -75,13 +84,13 @@ parser.add_argument('--min_target',type=str2bool,default=False)
 parser.add_argument('--use_layer_norm',type=str2bool,default=True)
 
 parser.add_argument('--clipping_ratio',type=float,default=0.25) 
-parser.add_argument('--gae_lambda',type=float,default=0.5) 
+parser.add_argument('--gae_lambda',type=float,default=0.) 
 
 parser.add_argument('--episode_based',type=str2bool,default=False) 
-parser.add_argument('--minibatch',type=str2bool,default=True) 
+parser.add_argument('--minibatch',type=str2bool,default=False) 
 parser.add_argument('--buffer_size',type=int,default=50_000) 
 parser.add_argument('--policy_steps',type=int,default=5000) 
-parser.add_argument('--num_epochs',type=int,default=10) 
+parser.add_argument('--num_epochs',type=int,default=1) 
 parser.add_argument('--num_critic_updates',type=int,default=5000)
 parser.add_argument('--num_actor_updates',type=int,default=1)
 parser.add_argument('--activation_fn',type=str,default='tanh')
@@ -97,12 +106,6 @@ random.seed(args.seed)
 np.random.seed(args.seed)
 jax_rng = jax.random.PRNGKey(args.seed)
 
-# Enable JAX NaN debugging to help identify numerical issues
-jax.config.update("jax_debug_nans", True)
-os.environ["JAX_TRACEBACK_FILTERING"] = "off"
-# Enable JAX float64 precision for better numerical stability
-jax.config.update("jax_enable_x64", True)
-jax.config.update("jax_default_matmul_precision", "highest")
 
 
 #jax.config.update("jax_disable_jit", True)
@@ -156,7 +159,6 @@ def train(args):
 
     replay_buffer = ReplayBuffer.create(example_transition, size=int(args.buffer_size))
     actor_buffer = ActorReplayBuffer.create(example_transition, size=args.policy_steps)
-    #actor_buffer = ActorReplayBuffer.create(example_transition, size=int(args.buffer_size))
 
     agent = create_learner(args.seed,
                         
@@ -216,55 +218,62 @@ def train(args):
                 pbar.update(int(num_steps))
                  ### Update critics ###:
                 logging.debug('update critics')
-                transitions = replay_buffer.get_all()
+               
+                data = replay_buffer.get_all()
                 
-                # Generate batch indices for critic updates
+                # Recompute log_probs for the entire buffer using the current policy
+                # This ensures that the 'log_probs' field in the data used for updates
+                # reflects the policy's evaluation just before the current update cycle.
+                @jax.jit
+                def compute_log_probs(observations, pre_actions):
+                    policy_dist = agent.actor(observations)
+                    pre_log_probs = policy_dist.log_prob(pre_actions)
+                    return pre_log_probs - jnp.sum(2 * (jnp.log(2) + pre_actions - jax.nn.softplus(2 * pre_actions)), axis=-1)
+                
+                new_logp = compute_log_probs(data['observations'], data['pre_actions'])
+                data['log_probs'] = new_logp
+                
+                # Generate batch indices for both critic and actor updates
                 batch_size = 250
-                n_samples = transitions['observations'].shape[0]
+                n_samples = data['observations'].shape[0]
                 n_updates = n_samples // batch_size
-                indexes = jnp.arange(transitions['observations'].shape[0])
-                batch_indices = jax.random.choice(agent.rng, indexes, shape=(n_updates, batch_size), replace=True)
-                
+
+            
 
                 def update_critic(carry, indices):
                     agent = carry
-                    minibatch = jax.tree.map(lambda x: x[indices], transitions)
+                    minibatch = jax.tree.map(lambda x: x[indices], data)
                     agent = agent.update_critics(minibatch)
                     return agent, None
-                
-                # Use jax.lax.scan to update the critic for each batch
-                agent, _ = jax.lax.scan(update_critic, agent, batch_indices)
 
-                
-                
-                 ### Update actor ###
-                data = actor_buffer.get_all()    
-        
                 def update_actor(carry, indices):
                     agent = carry
                     minibatch = jax.tree.map(lambda x: x[indices], data)
                     agent, actor_info = agent.update_actor(minibatch)
                     return agent, actor_info
                 
+                # def update_critic_actor(carry, indices):
+                #     agent = carry
+                #     minibatch = jax.tree.map(lambda x: x[indices], data)
+                #     agent = agent.update_critics(minibatch)
+                #     agent, actor_info = agent.update_actor(minibatch)
+                #     return agent, actor_info
                 
-                # Generate batch indices for actor updates
-                batch_size = 250
-                n_samples = data['observations'].shape[0]
-                n_updates = n_samples // batch_size
-              
                 
-                # Create contiguous batches for actor updates
-                contiguous_batch_indices = jnp.arange(n_updates * batch_size).reshape(n_updates, batch_size)
+                for _ in range(10):
+            
+                    shuffled_indices = jax.random.permutation(agent.rng, jnp.arange(n_samples))
+                    shuffled_batch_indices = shuffled_indices[:n_updates * batch_size].reshape(n_updates, batch_size)
+                    #contiguous_batch_indices = jnp.arange(n_updates * batch_size).reshape(n_updates, batch_size)
+                    agent, _ = jax.lax.scan(update_critic, agent, shuffled_batch_indices)
+                    agent, infos = jax.lax.scan(update_actor, agent, shuffled_batch_indices)
+                    
+        
+                # Average metrics across minibatches
+                actor_update_info = jax.tree.map(lambda x: x.mean(), infos)
+                critic_update_info = {}  # This will be empty as critic info is not returned from update_critics
                 
-                for _ in range(args.num_epochs):
-                    
-                    # Use jax.lax.scan to update the actor for each batch
-                    agent, actor_update_info = jax.lax.scan(update_actor, agent, contiguous_batch_indices)
-                    
-                    critic_update_info = {}
-                    actor_update_info = jax.tree.map(lambda x: x.mean(), actor_update_info)
-                    
-                update_info = {**critic_update_info,**actor_update_info}
+                update_info = {**critic_update_info, **actor_update_info}
                 
                 ### Log training info ###
                 exploration_metrics = {f'exploration/disc_return': policy_return}

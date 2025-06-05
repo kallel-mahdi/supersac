@@ -129,7 +129,10 @@ def train(args):
     
     else : 
     
-        env = gym.wrappers.RecordEpisodeStatistics(gym.make(args.env_name, max_episode_steps=args.max_episode_steps))
+        env = gym.make(args.env_name, max_episode_steps=args.max_episode_steps)
+        env = gym.wrappers.RecordEpisodeStatistics(env)
+        env = NormalizeObservation(env)
+        env = gym.wrappers.NormalizeReward(env)
         eval_env = gym.wrappers.RecordEpisodeStatistics(gym.make(args.env_name,max_episode_steps=1000))
     
     

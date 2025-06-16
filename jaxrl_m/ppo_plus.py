@@ -99,9 +99,9 @@ class SACAgent(flax.struct.PyTreeNode):
 
         #if n_batches <100 or num_updates is not None:
 
-        if n_batches < 100:
+        if n_batches < 500:
             #n_batches = jnp.maximum(100,num_updates)
-            n_batches = 100
+            n_batches = 500
             idxs = jax.random.choice(agent.rng, a=transitions['observations'].shape[0], shape=(n_batches, 250), replace=True)
 
         batches = jax.vmap(lambda i: jax.tree.map(lambda x: x[i], transitions))(idxs)
@@ -403,22 +403,22 @@ def create_learner(
         critic_def = ensemblize(OriginalCritic,num_critics)(hidden_dims=critic_hidden_dims,use_layer_norm=use_layer_norm,activations=activations)
         #critic_params = critic_def.init(critic_key, observations, actions)['params']
         critic_params = critic_def.init(critic_key, observations, actions)['params']
-        critic = TrainState.create(critic_def, critic_params, tx=optax.adam(learning_rate=critic_lr))
+        critic = TrainState.create(critic_def, critic_params, tx=optax.adamw(learning_rate=critic_lr,))
           
         v_def = ensemblize(OriginalV,num_critics)(hidden_dims=critic_hidden_dims,use_layer_norm=use_layer_norm,activations=activations)
         v_params = v_def.init(critic_key, observations, actions)['params']
-        v = TrainState.create(v_def, v_params, tx=optax.adam(learning_rate=critic_lr))
+        v = TrainState.create(v_def, v_params, tx=optax.adamw(learning_rate=critic_lr))
 
         actor_params = actor_def.init(actor_key, observations)['params']
         temp_def = Temperature(temperature)
         temp_params = temp_def.init(rng)['params']
         
         tx = optax.chain(
-            optax.clip_by_global_norm(0.5), ## This is necessary to avoid exploding gradients due to numerical instabilities.
-            optax.adam(learning_rate=actor_lr,b1=momentum,b2=b2),
+            #optax.clip_by_global_norm(0.5), ## This is necessary to avoid exploding gradients due to numerical instabilities.
+            optax.adamw(learning_rate=actor_lr,b1=momentum,b2=b2),
         )
         actor = TrainState.create(actor_def, actor_params, tx=tx)
-        temp = TrainState.create(temp_def, temp_params, tx=optax.adam(learning_rate=temp_lr,b1=momentum,b2=b2)) ##placeholder
+        temp = TrainState.create(temp_def, temp_params, tx=optax.adamw(learning_rate=temp_lr)) ##placeholder
             
         if target_entropy is None:
 

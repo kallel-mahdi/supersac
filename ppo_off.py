@@ -41,6 +41,8 @@ os.environ['PYTHONHASHSEED'] = '1'
 os.environ['TF_CUDNN_DETERMINISTIC'] = '1'
 os.environ['TF_DETERMINISTIC_OPS'] = '1'
 os.environ['XLA_FLAGS']='--xla_gpu_deterministic_ops=true'
+config.update("jax_log_compiles", True)
+
 
 
 
@@ -54,7 +56,7 @@ parser.add_argument('--project_name',type=str,default="single_exp")
 parser.add_argument('--env_name',type=str,default="Walker2d-v5") 
 parser.add_argument('--max_steps',type=int,default=1_000_000) 
 parser.add_argument('--max_episode_steps',type=int,default=1000) 
-parser.add_argument('--gamma',type=float,default=0.99)
+parser.add_argument('--gamma',type=float,default=0.995)
 parser.add_argument('--entropy_coeff',type=float,default=1.) 
 
 parser.add_argument('--num_critics',type=int,default=5)
@@ -62,7 +64,7 @@ parser.add_argument('--hidden_dims',type=int,default=256)
 parser.add_argument('--critic_lr',type=float,default=3e-4) 
 parser.add_argument('--actor_lr',type=float,default=3e-4) 
 parser.add_argument('--temp_lr',type=float,default=3e-4) 
-parser.add_argument('--momentum',type=float,default=0.5) 
+parser.add_argument('--momentum',type=float,default=0.) 
 parser.add_argument('--b2',type=float,default=0.999) 
 parser.add_argument('--temperature',type=float,default=1.0) 
 
@@ -73,15 +75,15 @@ parser.add_argument('--adaptive_critics',type=str2bool,default=False)
 parser.add_argument('--min_target',type=str2bool,default=False)
 parser.add_argument('--use_layer_norm',type=str2bool,default=True)
 
-parser.add_argument('--clipping_ratio',type=float,default=0.2) 
+parser.add_argument('--clipping_ratio',type=float,default=0.25) 
 parser.add_argument('--gae_lambda',type=float,default=0.) 
 
 parser.add_argument('--episode_based',type=str2bool,default=False) 
 parser.add_argument('--minibatch',type=str2bool,default=True) 
 parser.add_argument('--buffer_size',type=int,default=50_000) 
 parser.add_argument('--policy_steps',type=int,default=5_000) 
-parser.add_argument('--num_epochs',type=int,default=10) 
-parser.add_argument('--num_critic_updates',type=int,default=200)
+parser.add_argument('--num_epochs',type=int,default=50) 
+parser.add_argument('--batch_size',type=int,default=250)
 parser.add_argument('--num_actor_updates',type=int,default=1)
 parser.add_argument('--activation_fn',type=str,default='relu')
 parser.add_argument('--stable_scheme',type=str2bool,default=True)
@@ -208,39 +210,22 @@ def train(args):
                 pbar.update(int(num_steps))
                 
                 
+                    
+                
                 for _ in range(args.num_epochs):
-                    ### Get all transitions and shuffle
+                    ### Get all transitions
                     transitions = replay_buffer.get_all()
                     
-                    
-                    # Get number of transitions and calculate number of batches
-                    n_transitions = transitions['observations'].shape[0]
-                    indices = jnp.arange(n_transitions)
-                    indices = jax.random.permutation(exploration_rng, indices)
-                    
-                    # Define the scan function
-                    def update_batch(carry, batch_start):
-                        agent, exploration_rng = carry
-                        batch_indices = indices[batch_start:batch_start + args.batch_size]
-                        
-                        # Get batch of transitions
-                        batch = jax.tree_map(lambda x: x[batch_indices], transitions)
-                        
-                        # Update critics and actor on this batch
-                        agent = agent.update_critics(batch)
-                        agent, actor_update_info = agent.update_actor(batch)
-                        
-                        return (agent, exploration_rng), None
-
-                    # Use lax.scan for the batch updates
-                    (agent, exploration_rng), _ = jax.lax.scan(
-                        update_batch,
-                        (agent, exploration_rng),
-                        jnp.arange(0, n_transitions, args.batch_size)
+                    # Update agent for one epoch (JIT compiled)
+                    agent, actor_update_infos = agent.update_epoch(
+                        transitions, args.batch_size, exploration_rng
                     )
                     
+                    # Update exploration RNG
+                    exploration_rng = jax.random.split(exploration_rng)[0]
+                    
                     critic_update_info = {}
-                    actor_update_info = {}  # Reset this as we're not using the last batch's info
+                    actor_update_info = {}  # Could extract from actor_update_infos if needed
                 
                 update_info = {**critic_update_info, **actor_update_info}
                 

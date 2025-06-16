@@ -1,4 +1,3 @@
-
 import jax.random
 import flax
 import flax.linen as nn
@@ -6,6 +5,7 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 import optax
+from functools import partial
 
 from jaxrl_m.common import nonpytree_field
 from jaxrl_m.typing import *
@@ -98,9 +98,9 @@ class SACAgent(flax.struct.PyTreeNode):
 
         #if n_batches <100 or num_updates is not None:
 
-        if n_batches < 100:
+        if n_batches < 500:
             #n_batches = jnp.maximum(100,num_updates)
-            n_batches = 100
+            n_batches = 500
             idxs = jax.random.choice(agent.rng, a=transitions['observations'].shape[0], shape=(n_batches, 250), replace=True)
 
         batches = jax.vmap(lambda i: jax.tree.map(lambda x: x[i], transitions))(idxs)
@@ -143,6 +143,7 @@ class SACAgent(flax.struct.PyTreeNode):
             # Reverse the advantages back to the original order
             advantages = advantages[::-1]
             advantages = advantages* (1 - truncations)
+            #advantages = advantages / (jnp.std(advantages) + 1e-8)
 
             return advantages,None
                 
@@ -207,7 +208,7 @@ class SACAgent(flax.struct.PyTreeNode):
 
             ### Clip temperature to minimum value
             temp_loss = jax.lax.cond(
-                        jnp.logical_and(temperature < 0.001, temp_loss > 0),
+                        jnp.logical_and(temperature < 0.0001, temp_loss > 0),
                         lambda _: 0.0,
                         lambda _: temp_loss,
                         operand=None
@@ -334,6 +335,41 @@ class SACAgent(flax.struct.PyTreeNode):
             actions = pre_actions
         
         return actions
+
+    @partial(jax.jit, static_argnames=['batch_size'])
+    def update_epoch(agent, transitions, batch_size, rng):
+        """
+        JIT-compiled method to update agent for one epoch with multiple batches
+        """
+        # Get number of transitions and calculate number of batches
+        n_transitions = transitions['observations'].shape[0]
+        indices = jnp.arange(n_transitions)
+        indices = jax.random.permutation(rng, indices)
+        
+        # Calculate number of complete batches
+        n_batches = n_transitions // batch_size
+        
+        # Use dynamic slice instead of regular slicing
+        total_indices_needed = n_batches * batch_size
+        batch_indices = jax.lax.dynamic_slice(indices, (0,), (total_indices_needed,))
+        batch_indices = batch_indices.reshape(n_batches, batch_size)
+        
+        # Reshape transitions to match batch structure
+        batched_transitions = jax.tree.map(
+            lambda x: x[batch_indices], transitions
+        )
+        
+        # Define update function for all batches using scan
+        def update_batch_fn(agent, batch):
+            agent = agent.update_critics(batch)
+            agent, actor_info = agent.update_actor(batch)
+            return agent, actor_info
+        
+        agent, actor_infos = jax.lax.scan(
+            update_batch_fn, agent, batched_transitions
+        )
+        
+        return agent, actor_infos
 
 
 def create_learner(

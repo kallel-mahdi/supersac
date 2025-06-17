@@ -8,8 +8,11 @@ ml_collections
 --pre
 --find-links https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
 jax[cuda]
-envpool
-torch ## to get rid of
+#envpool
+nvidia-cublas-cu12==12.9.0.13
+#torch ## to get rid of
 dm_control
 pandas
-mushroom_rl
+matplotlib
+seaborn
+#mushroom_rl

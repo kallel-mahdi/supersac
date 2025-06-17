@@ -216,7 +216,12 @@ class SACAgent(flax.struct.PyTreeNode):
             return actor_loss, {
                 'actor_loss': actor_loss,
                 'entropy': entropy,
-                'approx_kl': approx_kl
+                'approx_kl': approx_kl,
+                'max_ratio':jnp.max(ratio),
+                'min_ratio':jnp.min(ratio),
+                'mean_ratio':jnp.mean(ratio),
+                'std_ratio':jnp.std(ratio),
+                
             }
             
         

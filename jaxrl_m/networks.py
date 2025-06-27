@@ -38,29 +38,93 @@ def relu_init(scale: Optional[float] = 1.0):
     return nn.initializers.variance_scaling(scale, "fan_avg", "uniform")
 
 
-class MLP(nn.Module):
-    
-    hidden_dims: Sequence[int]
-    activations: Callable[[jnp.ndarray], jnp.ndarray]     
-    use_layer_norm: bool
-    activate_final: bool
-    use_bias : bool = True
-    
+class SimbaResidualBlock(nn.Module):
+    hidden_dim: int
+    activation_fn: Callable[[jnp.ndarray], jnp.ndarray] = nn.relu
+    # "the MLP is structured with an inverted bottleneck, where the hidden
+    # dimension is expanded to 4 *  hidden_dim"
+    scale_factor: int = 4
+    norm_layer: type[nn.Module] = nn.LayerNorm
 
     @nn.compact
-    def __call__(self, x: jnp.ndarray, train=False) -> jnp.ndarray:
-        for i, size in enumerate(self.hidden_dims):
+    def __call__(self, x: jnp.ndarray) -> jnp.ndarray:
+        residual = x
+        x = self.norm_layer()(x)
+        x = nn.Dense(self.hidden_dim * self.scale_factor, kernel_init=nn.initializers.he_normal())(x)
+        x = self.activation_fn(x)
+        x = nn.Dense(self.hidden_dim, kernel_init=nn.initializers.he_normal())(x)
+        return residual + x
+
+
+# class MLP(nn.Module):
+    
+#     hidden_dims: Sequence[int]
+#     activations: Callable[[jnp.ndarray], jnp.ndarray]     
+#     use_layer_norm: bool
+#     activate_final: bool
+#     use_bias : bool = True
+    
+
+#     @nn.compact
+#     def __call__(self, x: jnp.ndarray, train=False) -> jnp.ndarray:
+#         for i, size in enumerate(self.hidden_dims):
             
-            kernel_init = tanh_init() if self.activations == nn.tanh else relu_init()
+#             kernel_init = tanh_init() if self.activations == nn.tanh else relu_init()
 
-            x = nn.Dense(size, kernel_init=kernel_init,use_bias=self.use_bias)(x)
+#             x = nn.Dense(size, kernel_init=kernel_init,use_bias=self.use_bias)(x)
 
-            if i + 1 < len(self.hidden_dims) or self.activate_final:
-                if self.use_layer_norm:
-                    x = nn.LayerNorm()(x)
-                x = self.activations(x)
+#             if i + 1 < len(self.hidden_dims) or self.activate_final:
+#                 if self.use_layer_norm:
+#                     x = nn.LayerNorm()(x)
+#                 x = self.activations(x)
+#         return x
+
+
+
+# Adapted from simba: https://github.com/SonyResearch/simba
+class SimbaResidualBlock(nn.Module):
+    hidden_dim: int
+    activation_fn: Callable[[jnp.ndarray], jnp.ndarray] = nn.relu
+    # "the MLP is structured with an inverted bottleneck, where the hidden
+    # dimension is expanded to 4 *  hidden_dim"
+    scale_factor: int = 4
+    norm_layer: type[nn.Module] = nn.LayerNorm
+    use_bias: bool = True
+
+    @nn.compact
+    def __call__(self, x: jnp.ndarray,train=False) -> jnp.ndarray:
+        residual = x
+        x = self.norm_layer()(x)
+        x = nn.Dense(self.hidden_dim * self.scale_factor, kernel_init=nn.initializers.he_normal())(x)
+        x = self.activation_fn(x)
+        x = nn.Dense(self.hidden_dim, kernel_init=nn.initializers.he_normal())(x)
+        return residual + x
+
+
+class MLP(nn.Module):
+    hidden_dims: Sequence[int]
+    activations: Callable[[jnp.ndarray], jnp.ndarray] = nn.relu
+    use_layer_norm: bool = True
+    norm_layer: type[nn.Module] = nn.LayerNorm
+    activate_final: bool = True
+    scale_factor: int = 4
+    use_bias: bool = True
+
+    @nn.compact
+    def __call__(self, x: jnp.ndarray) -> jnp.ndarray:
+        x = self.norm_layer()(x)
+        x = nn.Dense(self.hidden_dims[0])(x)
+
+        for n_units in self.hidden_dims:
+            x = SimbaResidualBlock(
+                n_units,
+                self.activations,
+                self.scale_factor,
+                self.norm_layer,  # type: ignore[arg-type]
+            )(x)
+        x = self.norm_layer()(x)
+        
         return x
-
 
 
 

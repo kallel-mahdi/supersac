@@ -25,7 +25,7 @@ from jaxrl_m.evaluation import (EpisodeMonitor, evaluate, flatten,
 from jaxrl_m.rollout import (rollout_policy, rollout_policy2)
 from jaxrl_m.utils import flatten_rollouts
 from jaxrl_m.wandb import default_wandb_config, get_flag_dict, setup_wandb
-from jaxrl_m.ppo_plus import *
+from jaxrl_m.ppo_plus_off import *
 from jaxrl_m.utils import *
 from jaxrl_m.normalize import *
 from jaxrl_m.dmc import DMCGym
@@ -52,7 +52,7 @@ parser.add_argument('--seed',type=int,default=42)
 
 parser.add_argument('--algo_name', type=str, default='superppo', help='the name of the RL algorithm')
 parser.add_argument('--project_name',type=str,default="single_exp") 
-parser.add_argument('--env_name',type=str,default="run") 
+parser.add_argument('--env_name',type=str,default="Ant-v5") 
 parser.add_argument('--max_steps',type=int,default=1_000_000) 
 parser.add_argument('--max_episode_steps',type=int,default=1000) 
 parser.add_argument('--gamma',type=float,default=0.99)
@@ -63,7 +63,7 @@ parser.add_argument('--hidden_dims',type=int,default=256)
 parser.add_argument('--critic_lr',type=float,default=3e-4) 
 parser.add_argument('--actor_lr',type=float,default=3e-4) 
 parser.add_argument('--temp_lr',type=float,default=3e-4) 
-parser.add_argument('--momentum',type=float,default=0.9) 
+parser.add_argument('--momentum',type=float,default=0.) 
 parser.add_argument('--b2',type=float,default=0.999) 
 parser.add_argument('--temperature',type=float,default=1.0) 
 
@@ -75,13 +75,13 @@ parser.add_argument('--min_target',type=str2bool,default=False)
 parser.add_argument('--use_layer_norm',type=str2bool,default=True)
 
 parser.add_argument('--clipping_ratio',type=float,default=0.25) 
-parser.add_argument('--gae_lambda',type=float,default=0.5) 
+parser.add_argument('--gae_lambda',type=float,default=0.) 
 
 parser.add_argument('--episode_based',type=str2bool,default=False) 
-parser.add_argument('--minibatch',type=str2bool,default=True) 
-parser.add_argument('--buffer_size',type=int,default=100_000) 
+parser.add_argument('--minibatch',type=str2bool,default=False) 
+parser.add_argument('--buffer_size',type=int,default=50_000) 
 parser.add_argument('--policy_steps',type=int,default=5000) 
-parser.add_argument('--num_epochs',type=int,default=10) 
+parser.add_argument('--num_epochs',type=int,default=25) 
 parser.add_argument('--num_critic_updates',type=int,default=200)
 parser.add_argument('--num_actor_updates',type=int,default=1)
 parser.add_argument('--activation_fn',type=str,default='tanh')
@@ -171,8 +171,8 @@ def train(args):
                     b2=args.b2,
                     clipping_ratio=args.clipping_ratio,
                     num_actor_updates=args.num_actor_updates,
-                    actor_hidden_dims=(args.hidden_dims,args.hidden_dims),
-                    critic_hidden_dims=(args.hidden_dims,args.hidden_dims),
+                    actor_hidden_dims=(128,128),
+                    critic_hidden_dims=(128,128),
                     use_layer_norm= args.use_layer_norm,
                     gae_lambda=args.gae_lambda,
                     minibatch = args.minibatch,
@@ -218,9 +218,11 @@ def train(args):
                     
                             
                     ### Update actor ###
-                    actor_batch = actor_buffer.get_all()    
+                    #actor_batch = actor_buffer.get_all()    
+                    actor_batch = replay_buffer.get_all()
                     
-                    agent, actor_update_info = agent.update_actor(actor_batch)    
+                    #agent, actor_update_info = agent.update_actor(actor_batch)    
+                    agent,actor_update_info = agent.update_actor_seq(actor_batch)
                     critic_update_info = {}
                 
                 update_info = {**critic_update_info, **actor_update_info}

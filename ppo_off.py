@@ -41,7 +41,7 @@ os.environ['PYTHONHASHSEED'] = '1'
 os.environ['TF_CUDNN_DETERMINISTIC'] = '1'
 os.environ['TF_DETERMINISTIC_OPS'] = '1'
 os.environ['XLA_FLAGS']='--xla_gpu_deterministic_ops=true'
-config.update("jax_log_compiles", True)
+#config.update("jax_log_compiles", True)
 
 
 
@@ -56,7 +56,7 @@ parser.add_argument('--project_name',type=str,default="single_exp")
 parser.add_argument('--env_name',type=str,default="Walker2d-v5") 
 parser.add_argument('--max_steps',type=int,default=1_000_000) 
 parser.add_argument('--max_episode_steps',type=int,default=1000) 
-parser.add_argument('--gamma',type=float,default=0.995)
+parser.add_argument('--gamma',type=float,default=0.99)
 parser.add_argument('--entropy_coeff',type=float,default=1.) 
 
 parser.add_argument('--num_critics',type=int,default=5)
@@ -75,14 +75,14 @@ parser.add_argument('--adaptive_critics',type=str2bool,default=False)
 parser.add_argument('--min_target',type=str2bool,default=False)
 parser.add_argument('--use_layer_norm',type=str2bool,default=True)
 
-parser.add_argument('--clipping_ratio',type=float,default=0.25) 
+parser.add_argument('--clipping_ratio',type=float,default=0.2) 
 parser.add_argument('--gae_lambda',type=float,default=0.) 
 
 parser.add_argument('--episode_based',type=str2bool,default=False) 
 parser.add_argument('--minibatch',type=str2bool,default=True) 
-parser.add_argument('--buffer_size',type=int,default=50_000) 
-parser.add_argument('--policy_steps',type=int,default=5_000) 
-parser.add_argument('--num_epochs',type=int,default=50) 
+parser.add_argument('--buffer_size',type=int,default=50000) 
+parser.add_argument('--policy_steps',type=int,default=5000) 
+parser.add_argument('--num_epochs',type=int,default=20) 
 parser.add_argument('--batch_size',type=int,default=250)
 parser.add_argument('--num_actor_updates',type=int,default=1)
 parser.add_argument('--activation_fn',type=str,default='relu')
@@ -217,17 +217,25 @@ def train(args):
                     transitions = replay_buffer.get_all()
                     
                     # Update agent for one epoch (JIT compiled)
-                    agent, actor_update_infos = agent.update_epoch(
-                        transitions, args.batch_size, exploration_rng
+                    agent, update_info = agent.update_epoch(
+                        transitions, args.batch_size, exploration_rng, update_mode='critic_only'
                     )
                     
                     # Update exploration RNG
                     exploration_rng = jax.random.split(exploration_rng)[0]
                     
-                    critic_update_info = {}
-                    actor_update_info = {}  # Could extract from actor_update_infos if needed
                 
-                update_info = {**critic_update_info, **actor_update_info}
+                for _ in range(args.num_epochs):
+                    ### Get all transitions
+                    transitions = replay_buffer.get_all()
+                    
+                    # Update agent for one epoch (JIT compiled)
+                    agent, update_info = agent.update_epoch(
+                        transitions, args.batch_size, exploration_rng, update_mode='actor_only'
+                    )
+                    
+                    # Update exploration RNG
+                    exploration_rng = jax.random.split(exploration_rng)[0]
                 
                 ### Log training info ###
                 exploration_metrics = {f'exploration/disc_return': policy_return}

@@ -1,3 +1,4 @@
+
 import jax.random
 import flax
 import flax.linen as nn
@@ -5,7 +6,6 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 import optax
-from functools import partial
 
 from jaxrl_m.common import nonpytree_field
 from jaxrl_m.typing import *
@@ -98,9 +98,9 @@ class SACAgent(flax.struct.PyTreeNode):
 
         #if n_batches <100 or num_updates is not None:
 
-        if n_batches < 500:
+        if n_batches < 100:
             #n_batches = jnp.maximum(100,num_updates)
-            n_batches = 500
+            n_batches = 100
             idxs = jax.random.choice(agent.rng, a=transitions['observations'].shape[0], shape=(n_batches, 250), replace=True)
 
         batches = jax.vmap(lambda i: jax.tree.map(lambda x: x[i], transitions))(idxs)
@@ -114,52 +114,18 @@ class SACAgent(flax.struct.PyTreeNode):
     @jax.jit
     def update_actor(agent, batch: Batch):
         
-      
-        def compute_gae(rewards: jnp.ndarray, values: jnp.ndarray, next_values: jnp.ndarray, 
-                        dones: jnp.ndarray, truncations: jnp.ndarray, gamma: float, 
-                        lam: float) -> jnp.ndarray:
-            # Compute deltas (TD residuals)
-            
-            
-            deltas = rewards + gamma * next_values * (1 - dones) - values
-            deltas = deltas * (1 - truncations)
-            
-            # Define a function to update the cumulative advantage in a scan step
-            def update_advantage(cumulative_advantage, delta_and_mask):
-                delta, trunc,done = delta_and_mask
-                # Update advantage using GAE with truncation handling
-                cumulative_advantage = delta + gamma * lam * (1-done) * (1 - trunc) * cumulative_advantage 
-                return cumulative_advantage, cumulative_advantage
-
-            # Use lax.scan to accumulate the advantages in reverse order
-            # Reverse deltas and truncations for the scan (scan works forward, but we want to process backwards)
-            reversed_deltas = deltas[::-1]
-            reversed_truncations = truncations[::-1]
-            reversed_dones = dones[::-1]
-            
-            # Scan will return the final cumulative advantage and the full sequence of advantages
-            _, advantages = lax.scan(update_advantage, 0.0, (reversed_deltas, reversed_truncations,reversed_dones))
-
-            # Reverse the advantages back to the original order
-            advantages = advantages[::-1]
-            advantages = advantages* (1 - truncations)
-            #advantages = advantages / (jnp.std(advantages) + 1e-8)
-
-            return advantages,None
-                
+   
   
         def actor_loss_fn(
                 actor_params,
                 adv,
                 batch,
-                idx,
         ):
             
             ### Compute probability of old actions under new policy
             
 
-            batch = jax.tree.map(lambda x:x[idx],batch)
-            adv = adv[idx]
+            
             
             discounts,masks,logp = batch["discounts"],batch["masks"],batch["log_probs"]
                     
@@ -186,8 +152,6 @@ class SACAgent(flax.struct.PyTreeNode):
             actor_loss1 = masks*adv * ratio
             actor_loss2 = masks*adv * jnp.clip(ratio, 1 - clip_coef, 1 + clip_coef)
 
-          
-          
             actor_loss = -jnp.minimum(actor_loss1,actor_loss2).mean()
                 
             ### Pad Q and logits because actor buffer is padded ###
@@ -208,7 +172,7 @@ class SACAgent(flax.struct.PyTreeNode):
 
             ### Clip temperature to minimum value
             temp_loss = jax.lax.cond(
-                        jnp.logical_and(temperature < 0.0001, temp_loss > 0),
+                        jnp.logical_and(temperature < 0.001, temp_loss > 0),
                         lambda _: 0.0,
                         lambda _: temp_loss,
                         operand=None
@@ -234,66 +198,26 @@ class SACAgent(flax.struct.PyTreeNode):
             
             return v,log_p
         
-        if agent.config['gae_lambda'] > 0.:
-        
-            vs,hs = jax.vmap(evaluate,in_axes=(None,0))(observations,jax.random.split(curr_key,10))
-            
-            tmp_v,tmp_logp = jnp.mean(vs,axis=0),jnp.mean(hs,axis=0)
-            tmp_v -= agent.temp.apply_fn({'params': agent.temp.params})*tmp_logp
-            v,next_v= tmp_v[:-1],tmp_v[1:]
-            
-            rewards = batch["rewards"]-agent.temp.apply_fn({'params': agent.temp.params})*batch["log_probs"]
-            dones = jnp.bool(1-batch["masks"])
-            truncations = jnp.bool(batch["truncateds"])
-            
-            adv,_ = compute_gae(rewards.squeeze(),v.squeeze(),next_v.squeeze(),dones.squeeze(),truncations.squeeze(),
-                                gamma=agent.config['discount'],lam=agent.config['gae_lambda'])
-            adv = adv.reshape(-1)
+        ### Compute advantage for the fixed states AND actions
+        vs,hs = jax.vmap(evaluate,in_axes=(None,0))(batch["observations"],jax.random.split(curr_key,10))        
+        tmp_v,tmp_logp = jnp.mean(vs,axis=0),jnp.mean(hs,axis=0)
+        q = agent.critic.apply_fn({'params': agent.critic.params},batch["observations"],batch["actions"]).mean(axis=0)
+        adv = (q-agent.temp.apply_fn({'params': agent.temp.params})*batch["log_probs"]) - (tmp_v - agent.temp.apply_fn({'params': agent.temp.params}) *tmp_logp)### This one worked
+        adv = adv.reshape(-1)
 
-        else :   
-
-            ### Compute advantage for the fixed states AND actions
-            vs,hs = jax.vmap(evaluate,in_axes=(None,0))(batch["observations"],jax.random.split(curr_key,10))        
-            tmp_v,tmp_logp = jnp.mean(vs,axis=0),jnp.mean(hs,axis=0)
-            q = agent.critic.apply_fn({'params': agent.critic.params},batch["observations"],batch["actions"]).mean(axis=0)
-            adv = (q-agent.temp.apply_fn({'params': agent.temp.params})*batch["log_probs"]) - (tmp_v - agent.temp.apply_fn({'params': agent.temp.params}) *tmp_logp)### This one worked
-            adv = adv.reshape(-1)
-            
+        grads,actor_info = jax.grad(actor_loss_fn,has_aux=True)(agent.actor.params,adv,batch)
+        new_actor = agent.actor.apply_gradients(grads=grads)
         
-       
-        if agent.config["minibatch"]:
-        
-            indexes = jnp.arange(adv.shape[0])
-            indexes = jax.random.permutation(new_rng, indexes)
-            batch_size = 250
-            num_actor_updates = adv.shape[0] // batch_size
-            index_batches = jnp.split(indexes[:batch_size * num_actor_updates], num_actor_updates)
-        
-     
-            for idx in index_batches:
-                
-                if not agent.config['minibatch']: idx = jnp.arange(adv.shape[0])
-                
-                grads,actor_info = jax.grad(actor_loss_fn,has_aux=True)(agent.actor.params,adv,batch,idx)
-                new_actor = agent.actor.apply_gradients(grads=grads)
-                
-                grads,temp_info = jax.grad(temp_loss_fn,has_aux=True)(agent.temp.params,actor_info['entropy'],agent.config['target_entropy'])
-                new_temp = agent.temp.apply_gradients(grads=grads)
-                
-                
-               
-
-                agent = agent.replace(rng=new_rng, actor=new_actor,temp=new_temp)
+        grads,temp_info = jax.grad(temp_loss_fn,has_aux=True)(agent.temp.params,actor_info['entropy'],agent.config['target_entropy'])
+        new_temp = agent.temp.apply_gradients(grads=grads)
+        agent = agent.replace(rng=new_rng, actor=new_actor,temp=new_temp)
 
         info = {**actor_info, **temp_info}  
      
             
         return agent,info
                     
-                    
 
-            
-        
     @jax.jit
     def sample_actions(agent,   
                        observations: np.ndarray,
@@ -336,89 +260,6 @@ class SACAgent(flax.struct.PyTreeNode):
         
         return actions
 
-    # @partial(jax.jit, static_argnames=['batch_size'])
-    # def update_epoch(agent, transitions, batch_size, rng):
-    #     """
-    #     JIT-compiled method to update agent for one epoch with multiple batches
-    #     """
-    #     # Get number of transitions and calculate number of batches
-    #     n_transitions = transitions['observations'].shape[0]
-    #     indices = jnp.arange(n_transitions)
-    #     indices = jax.random.permutation(rng, indices)
-        
-    #     # Calculate number of complete batches
-    #     n_batches = n_transitions // batch_size
-        
-    #     # Use dynamic slice instead of regular slicing
-    #     total_indices_needed = n_batches * batch_size
-    #     batch_indices = jax.lax.dynamic_slice(indices, (0,), (total_indices_needed,))
-    #     batch_indices = batch_indices.reshape(n_batches, batch_size)
-        
-    #     # Reshape transitions to match batch structure
-    #     batched_transitions = jax.tree.map(
-    #         lambda x: x[batch_indices], transitions
-    #     )
-        
-    #     # Define update function for all batches using scan
-    #     def update_batch_fn(agent, batch):
-    #         agent = agent.update_critics(batch)
-    #         agent, actor_info = agent.update_actor(batch)
-    #         return agent, actor_info
-        
-    #     agent, infos = jax.lax.scan(
-    #         update_batch_fn, agent, batched_transitions
-    #     )
-        
-    #     infos = jax.tree.map(lambda x: x.mean(), infos)
-        
-    #     return agent, infos
-    
-    @partial(jax.jit, static_argnames=['batch_size', 'update_mode'])
-    def update_epoch(agent, transitions, batch_size, rng, update_mode='both'):
-        """
-        JIT-compiled method to update agent for one epoch with multiple batches
-        
-        Args:
-            update_mode: str, one of 'both', 'critic_only', 'actor_only'
-        """
-        # Get number of transitions and calculate number of batches
-        n_transitions = transitions['observations'].shape[0]
-        indices = jnp.arange(n_transitions)
-        indices = jax.random.permutation(rng, indices)
-        
-        # Calculate number of complete batches
-        n_batches = n_transitions // batch_size
-        
-        # Use dynamic slice instead of regular slicing
-        total_indices_needed = n_batches * batch_size
-        batch_indices = jax.lax.dynamic_slice(indices, (0,), (total_indices_needed,))
-        batch_indices = batch_indices.reshape(n_batches, batch_size)
-        
-        # Reshape transitions to match batch structure
-        batched_transitions = jax.tree.map(
-            lambda x: x[batch_indices], transitions
-        )
-        
-        # Define update function for all batches using scan
-        def update_batch_fn(agent, batch):
-            if update_mode == 'critic_only':
-                agent = agent.update_critics(batch)
-                actor_info = {}  # Empty info dict for consistency
-            elif update_mode == 'actor_only':
-                agent, actor_info = agent.update_actor(batch)
-            else:  # update_mode == 'both'
-                agent = agent.update_critics(batch)
-                agent, actor_info = agent.update_actor(batch)
-            return agent, actor_info
-        
-        agent, infos = jax.lax.scan(
-            update_batch_fn, agent, batched_transitions
-        )
-        
-        infos = jax.tree.map(lambda x: x.mean(), infos)
-        
-        return agent, infos
-
 
 def create_learner(
                 seed: int,
@@ -426,10 +267,7 @@ def create_learner(
                 actions: jnp.ndarray,
                 discount: float,
                 num_critics: int,
-                discount_actor ,
                 min_target,
-                discount_entropy,
-                adaptive_critics,
                 entropy_coeff,
                 momentum,
                 b2,
@@ -495,10 +333,7 @@ def create_learner(
             observations=observations,
             actions=actions,  
             num_critics = num_critics, 
-            discount_actor = discount_actor, 
-            discount_entropy = discount_entropy,
-            adaptive_critics = adaptive_critics,
-            num_actor_updates = num_actor_updates,
+            num_actor_updates = num_actor_updates,  
             clipping_ratio = clipping_ratio,
             min_target = min_target,
             tanh_squash_actions=tanh_squash_actions,

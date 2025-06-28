@@ -16,7 +16,7 @@ from jaxrl_m.wandb import setup_wandb
 from jaxrl_m.rollout import *
 import os
 import argparse
-import envpool
+#import envpool
 import wandb
 import numpy as jnp
 from collections import deque
@@ -73,7 +73,7 @@ parser.add_argument('--capture_video', action='store_true',default=False, help='
 parser.add_argument('--save_model', action='store_true',default=False, help='whether to save model into the `runs/{run_name}` folder')
 parser.add_argument('--upload_model', action='store_true',default=False, help='whether to upload the saved model to huggingface')
 parser.add_argument('--hf_entity', type=str, default='', help='the user or org name of the model repository from the Hugging Face Hub')
-parser.add_argument('--env_name', type=str, default='stand', help='the id of the environment')
+parser.add_argument('--env_name', type=str, default='Hopper-v5', help='the id of the environment')
 parser.add_argument('--max_steps', type=int, default=1000000, help='total timesteps of the experiments')
 parser.add_argument('--learning_rate', type=float, default=3e-4, help='the learning rate of the optimizer')
 parser.add_argument('--num_envs', type=int, default=1, help='the number of parallel game environments')
@@ -85,7 +85,7 @@ parser.add_argument('--normalize_reward',type=str2bool, default=True)
 parser.add_argument('--normalize_observation',type=str2bool, default=True)
 parser.add_argument('--full_batch',type=str2bool, default=False)
 parser.add_argument('--gamma', type=float, default=0.99, help='the discount factor gamma')
-parser.add_argument('--gae_lambda', type=float, default=0.95, help='the lambda for the general advantage estimation')
+parser.add_argument('--gae_lambda', type=float, default=0.5, help='the lambda for the general advantage estimation')
 parser.add_argument('--num_minibatches', type=int, default=32, help='the number of mini-batches')
 parser.add_argument('--update_epochs', type=int, default=10, help='the K epochs to update the policy')
 parser.add_argument('--norm_adv',default=True,type=str2bool, help='Toggles advantages normalization')#####
@@ -241,7 +241,7 @@ if __name__ == "__main__":
     log_interval = 20000
     unlogged_steps,total_steps = 0,0
     agent = Agent(envs,args.hidden_dims,args.use_layer_norm).to(device)
-    optimizer = optim.Adam(agent.parameters(), lr=args.learning_rate, eps=1e-5)
+    optimizer = optim.Adam(agent.parameters(), lr=args.learning_rate,betas=(0.,0.999), eps=1e-5)
 
     # ALGO Logic: Storage setup
     obs = torch.zeros((args.num_steps, args.num_envs) + envs.single_observation_space.shape).to(device)
@@ -328,6 +328,8 @@ if __name__ == "__main__":
                 _, newlogprob, entropy, newvalue = agent.get_action_and_value(b_obs[mb_inds], b_actions[mb_inds])
                 logratio = newlogprob - b_logprobs[mb_inds]
                 ratio = logratio.exp()
+                
+                wandb.log({"ratio": ratio.mean(),"min_ratio":ratio.min(),"max_ratio":ratio.max()},step=global_step,commit=False)
 
                 with torch.no_grad():
                     # calculate approx_kl http://joschu.net/blog/kl-approx.html

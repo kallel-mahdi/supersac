@@ -56,75 +56,55 @@ class SimbaResidualBlock(nn.Module):
         return residual + x
 
 
+class MLP(nn.Module):
+    
+    hidden_dims: Sequence[int]
+    activations: Callable[[jnp.ndarray], jnp.ndarray]     
+    use_layer_norm: bool
+    activate_final: bool
+    use_bias : bool = True
+    
+
+    @nn.compact
+    def __call__(self, x: jnp.ndarray, train=False) -> jnp.ndarray:
+        for i, size in enumerate(self.hidden_dims):
+            
+            kernel_init = tanh_init() if self.activations == nn.tanh else relu_init()
+
+            x = nn.Dense(size, kernel_init=kernel_init,use_bias=self.use_bias)(x)
+
+            if i + 1 < len(self.hidden_dims) or self.activate_final:
+                if self.use_layer_norm:
+                    x = nn.LayerNorm()(x)
+                x = self.activations(x)
+        return x
+
+
+
 # class MLP(nn.Module):
-    
 #     hidden_dims: Sequence[int]
-#     activations: Callable[[jnp.ndarray], jnp.ndarray]     
-#     use_layer_norm: bool
-#     activate_final: bool
-#     use_bias : bool = True
-    
+#     activations: Callable[[jnp.ndarray], jnp.ndarray] = nn.relu
+#     use_layer_norm: bool = True
+#     norm_layer: type[nn.Module] = nn.LayerNorm
+#     activate_final: bool = True
+#     scale_factor: int = 4
+#     use_bias: bool = True
 
 #     @nn.compact
-#     def __call__(self, x: jnp.ndarray, train=False) -> jnp.ndarray:
-#         for i, size in enumerate(self.hidden_dims):
-            
-#             kernel_init = tanh_init() if self.activations == nn.tanh else relu_init()
+#     def __call__(self, x: jnp.ndarray) -> jnp.ndarray:
+#         x = self.norm_layer()(x)
+#         x = nn.Dense(self.hidden_dims[0])(x)
 
-#             x = nn.Dense(size, kernel_init=kernel_init,use_bias=self.use_bias)(x)
-
-#             if i + 1 < len(self.hidden_dims) or self.activate_final:
-#                 if self.use_layer_norm:
-#                     x = nn.LayerNorm()(x)
-#                 x = self.activations(x)
-#         return x
-
-
-
-# Adapted from simba: https://github.com/SonyResearch/simba
-class SimbaResidualBlock(nn.Module):
-    hidden_dim: int
-    activation_fn: Callable[[jnp.ndarray], jnp.ndarray] = nn.relu
-    # "the MLP is structured with an inverted bottleneck, where the hidden
-    # dimension is expanded to 4 *  hidden_dim"
-    scale_factor: int = 4
-    norm_layer: type[nn.Module] = nn.LayerNorm
-    use_bias: bool = True
-
-    @nn.compact
-    def __call__(self, x: jnp.ndarray,train=False) -> jnp.ndarray:
-        residual = x
-        x = self.norm_layer()(x)
-        x = nn.Dense(self.hidden_dim * self.scale_factor, kernel_init=nn.initializers.he_normal())(x)
-        x = self.activation_fn(x)
-        x = nn.Dense(self.hidden_dim, kernel_init=nn.initializers.he_normal())(x)
-        return residual + x
-
-
-class MLP(nn.Module):
-    hidden_dims: Sequence[int]
-    activations: Callable[[jnp.ndarray], jnp.ndarray] = nn.relu
-    use_layer_norm: bool = True
-    norm_layer: type[nn.Module] = nn.LayerNorm
-    activate_final: bool = True
-    scale_factor: int = 4
-    use_bias: bool = True
-
-    @nn.compact
-    def __call__(self, x: jnp.ndarray) -> jnp.ndarray:
-        x = self.norm_layer()(x)
-        x = nn.Dense(self.hidden_dims[0])(x)
-
-        for n_units in self.hidden_dims:
-            x = SimbaResidualBlock(
-                n_units,
-                self.activations,
-                self.scale_factor,
-                self.norm_layer,  # type: ignore[arg-type]
-            )(x)
-        x = self.norm_layer()(x)
+#         for n_units in self.hidden_dims:
+#             x = SimbaResidualBlock(
+#                 n_units,
+#                 self.activations,
+#                 self.scale_factor,
+#                 self.norm_layer,  # type: ignore[arg-type]
+#             )(x)
+#         x = self.norm_layer()(x)
         
-        return x
+#         return x
 
 
 
@@ -242,10 +222,12 @@ class Policy(nn.Module):
 
         means = nn.Dense(
             self.action_dim, kernel_init=kernel_init(self.final_fc_init_scale),use_bias=self.use_bias,name="means"
+            #self.action_dim,use_bias=self.use_bias,name="means"
         )(outputs)
         if self.state_dependent_std:
             log_stds = nn.Dense(
                 self.action_dim, kernel_init=kernel_init(self.final_fc_init_scale),use_bias=self.use_bias,name="log_stds"
+                #self.action_dim,use_bias=self.use_bias,name="log_stds"
             )(outputs)
         else:
             log_stds = self.param("log_stds", jax.nn.initializers.constant(-4.6), (self.action_dim,))

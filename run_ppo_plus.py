@@ -48,15 +48,15 @@ os.environ['XLA_FLAGS']='--xla_gpu_deterministic_ops=true'
 ##############################
 parser = argparse.ArgumentParser()
 
-parser.add_argument('--seed',type=int,default=42) 
+parser.add_argument('--seed',type=int,default=21) 
 
 parser.add_argument('--algo_name', type=str, default='superppo', help='the name of the RL algorithm')
 parser.add_argument('--project_name',type=str,default="single_exp") 
-parser.add_argument('--env_name',type=str,default="Ant-v5") 
+parser.add_argument('--env_name',type=str,default="Hopper-v5") 
 parser.add_argument('--max_steps',type=int,default=1_000_000) 
 parser.add_argument('--max_episode_steps',type=int,default=1000) 
 parser.add_argument('--gamma',type=float,default=0.99)
-parser.add_argument('--entropy_coeff',type=float,default=1.) 
+parser.add_argument('--entropy_coeff',type=float,default=0.5) 
 
 parser.add_argument('--num_critics',type=int,default=5)
 parser.add_argument('--hidden_dims',type=int,default=256) 
@@ -65,7 +65,7 @@ parser.add_argument('--actor_lr',type=float,default=3e-4)
 parser.add_argument('--temp_lr',type=float,default=3e-4) 
 parser.add_argument('--momentum',type=float,default=0.) 
 parser.add_argument('--b2',type=float,default=0.999) 
-parser.add_argument('--temperature',type=float,default=1.0) 
+parser.add_argument('--temperature',type=float,default=1.) 
 
 parser.add_argument('--discount_actor',type=str2bool,default=False)
 parser.add_argument('--discount_entropy',type=str2bool,default=False) 
@@ -74,17 +74,17 @@ parser.add_argument('--adaptive_critics',type=str2bool,default=False)
 parser.add_argument('--min_target',type=str2bool,default=False)
 parser.add_argument('--use_layer_norm',type=str2bool,default=True)
 
-parser.add_argument('--clipping_ratio',type=float,default=0.25) 
+parser.add_argument('--clipping_ratio',type=float,default=0.01) 
 parser.add_argument('--gae_lambda',type=float,default=0.) 
 
 parser.add_argument('--episode_based',type=str2bool,default=False) 
 parser.add_argument('--minibatch',type=str2bool,default=False) 
-parser.add_argument('--buffer_size',type=int,default=50_000) 
+parser.add_argument('--buffer_size',type=int,default=10_000) 
 parser.add_argument('--policy_steps',type=int,default=5000) 
-parser.add_argument('--num_epochs',type=int,default=25) 
+parser.add_argument('--num_epochs',type=int,default=20) 
 parser.add_argument('--num_critic_updates',type=int,default=200)
 parser.add_argument('--num_actor_updates',type=int,default=1)
-parser.add_argument('--activation_fn',type=str,default='tanh')
+parser.add_argument('--activation_fn',type=str,default='relu')
 parser.add_argument('--stable_scheme',type=str2bool,default=True)
 parser.add_argument('--bound_actions',type=str2bool,default=True)
 
@@ -92,16 +92,22 @@ args = parser.parse_args()
 print(args)
 
 
+from copy import deepcopy
 
 random.seed(args.seed)
 np.random.seed(args.seed)
 jax_rng = jax.random.PRNGKey(args.seed)
 
+# Enable NaN debugging and stack traces
+# jax.config.update("jax_debug_nans", True)
+# jax.config.update("jax_traceback_filtering", "off")
 
 
 #jax.config.update("jax_disable_jit", True)
 #config.update("jax_debug_nans", True)
-# config.update("jax_default_matmul_precision", "highest")
+# jax.config.update("jax_enable_x64", True)
+jax.config.update("jax_default_matmul_precision", "highest")
+
 #config.update("jax_log_compiles", True)
 
 def train(args):
@@ -171,8 +177,8 @@ def train(args):
                     b2=args.b2,
                     clipping_ratio=args.clipping_ratio,
                     num_actor_updates=args.num_actor_updates,
-                    actor_hidden_dims=(128,128),
-                    critic_hidden_dims=(128,128),
+                    actor_hidden_dims=(256,256),
+                    critic_hidden_dims=(256,256),
                     use_layer_norm= args.use_layer_norm,
                     gae_lambda=args.gae_lambda,
                     minibatch = args.minibatch,
@@ -226,6 +232,7 @@ def train(args):
                     critic_update_info = {}
                 
                 update_info = {**critic_update_info, **actor_update_info}
+                agent = agent.replace(old_actor_params=deepcopy(agent.actor.params),old_temp_params=deepcopy(agent.temp.params))
                 
                 ### Log training info ###
                 exploration_metrics = {f'exploration/disc_return': policy_return}

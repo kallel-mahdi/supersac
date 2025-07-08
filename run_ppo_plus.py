@@ -63,7 +63,7 @@ parser.add_argument('--hidden_dims',type=int,default=256)
 parser.add_argument('--critic_lr',type=float,default=3e-4) 
 parser.add_argument('--actor_lr',type=float,default=3e-4) 
 parser.add_argument('--temp_lr',type=float,default=3e-4) 
-parser.add_argument('--momentum',type=float,default=0.) 
+parser.add_argument('--momentum',type=float,default=0.9) 
 parser.add_argument('--b2',type=float,default=0.999) 
 parser.add_argument('--temperature',type=float,default=1.) 
 
@@ -74,17 +74,17 @@ parser.add_argument('--adaptive_critics',type=str2bool,default=False)
 parser.add_argument('--min_target',type=str2bool,default=False)
 parser.add_argument('--use_layer_norm',type=str2bool,default=True)
 
-parser.add_argument('--clipping_ratio',type=float,default=0.01) 
+parser.add_argument('--clipping_ratio',type=float,default=0.25) 
 parser.add_argument('--gae_lambda',type=float,default=0.) 
 
 parser.add_argument('--episode_based',type=str2bool,default=False) 
 parser.add_argument('--minibatch',type=str2bool,default=False) 
-parser.add_argument('--buffer_size',type=int,default=10_000) 
+parser.add_argument('--buffer_size',type=int,default=25_000) 
 parser.add_argument('--policy_steps',type=int,default=5000) 
 parser.add_argument('--num_epochs',type=int,default=20) 
 parser.add_argument('--num_critic_updates',type=int,default=200)
 parser.add_argument('--num_actor_updates',type=int,default=1)
-parser.add_argument('--activation_fn',type=str,default='relu')
+parser.add_argument('--activation_fn',type=str,default='tanh')
 parser.add_argument('--stable_scheme',type=str2bool,default=True)
 parser.add_argument('--bound_actions',type=str2bool,default=True)
 
@@ -177,8 +177,8 @@ def train(args):
                     b2=args.b2,
                     clipping_ratio=args.clipping_ratio,
                     num_actor_updates=args.num_actor_updates,
-                    actor_hidden_dims=(256,256),
-                    critic_hidden_dims=(256,256),
+                    actor_hidden_dims=(128,128),
+                    critic_hidden_dims=(128,128),
                     use_layer_norm= args.use_layer_norm,
                     gae_lambda=args.gae_lambda,
                     minibatch = args.minibatch,

@@ -244,10 +244,16 @@ class SACAgent(flax.struct.PyTreeNode):
             # Policy loss
             clip_coef = agent.config["clipping_ratio"] ##default 0.2 
             masks = batch["masks"]
-            actor_loss1 = masks*adv * ratio
-            actor_loss2 = masks*adv * jnp.clip(ratio, 1 - clip_coef, 1 + clip_coef)
-            actor_loss = -jnp.minimum(actor_loss1,actor_loss2).mean()
-                
+            # actor_loss1 = masks*adv * ratio
+            # actor_loss2 = masks*adv * jnp.clip(ratio, 1 - clip_coef, 1 + clip_coef)
+            # actor_loss = -jnp.minimum(actor_loss1,actor_loss2).mean()
+            
+            
+            actor_loss_spo_terms = batch["masks"] * adv * ratio - (jnp.abs(batch["masks"] * adv) / (2 * agent.config["clipping_ratio"])) * (ratio - 1)**2
+            actor_loss = -actor_loss_spo_terms.mean()
+            
+            
+                    
             ### Pad Q and logits because actor buffer is padded ###
             logp = masks * new_logp
             
@@ -283,7 +289,7 @@ class SACAgent(flax.struct.PyTreeNode):
             # 2. Define the allowed range and the condition
             min_ratio = 1.0 - clip_coef
             max_ratio = 1.0 + clip_coef
-            is_within_bounds = (temp_ratio >= min_ratio) & (temp_ratio <= max_ratio)
+            is_within_bounds = (temp_ratio >= min_ratio) & (temp_ratio <= max_ratio) & (new_temperature > 0.01)
             
             # 3. Calculate the standard loss
             # We stop the gradient on the error term as is standard practice.
@@ -295,14 +301,11 @@ class SACAgent(flax.struct.PyTreeNode):
             # If `is_within_bounds` is False, use `0.0`.
             temp_loss = jnp.where(is_within_bounds, standard_loss, 0.0)
             
-            # It's useful to track when clipping happens
-            was_clipped = jnp.where(is_within_bounds, 0.0, 1.0)
+       
             
             return temp_loss.mean(), {
                 'temp_loss': temp_loss.mean(),
                 'temperature': new_temperature,
-                #'was_clipped': was_clipped.mean(), # % of batch that was clipped
-                #'temp_ratio': temp_ratio
             }
             
         new_rng, curr_key, next_key = jax.random.split(agent.rng, 3)

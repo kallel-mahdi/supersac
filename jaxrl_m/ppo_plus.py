@@ -166,7 +166,7 @@ class SACAgent(flax.struct.PyTreeNode):
             ### Compute probability of old actions under new policy
             
 
-            batch = jax.tree_map(lambda x:x[idx],batch)
+            batch = jax.tree.map(lambda x:x[idx],batch)
             adv = adv[idx]
             
             discounts,masks,logp = batch["discounts"],batch["masks"],batch["log_probs"]

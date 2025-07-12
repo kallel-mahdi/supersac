@@ -42,6 +42,9 @@ os.environ['PYTHONHASHSEED'] = '1'
 os.environ['TF_CUDNN_DETERMINISTIC'] = '1'
 os.environ['TF_DETERMINISTIC_OPS'] = '1'
 os.environ['XLA_FLAGS']='--xla_gpu_deterministic_ops=true'
+# Enable highest precision in JAX
+#config.update('jax_enable_x64', True)  # Enable 64-bit precision
+#jax.config.update('jax_default_matmul_precision', 'highest')  # Use highest precision for matrix multiplications
 
 
 
@@ -52,7 +55,7 @@ parser.add_argument('--seed',type=int,default=21)
 
 parser.add_argument('--algo_name', type=str, default='superppo', help='the name of the RL algorithm')
 parser.add_argument('--project_name',type=str,default="single_exp") 
-parser.add_argument('--env_name',type=str,default="Hopper-v5") 
+parser.add_argument('--env_name',type=str,default="Ant-v5") 
 parser.add_argument('--max_steps',type=int,default=1_000_000) 
 parser.add_argument('--max_episode_steps',type=int,default=1000) 
 parser.add_argument('--gamma',type=float,default=0.99)
@@ -63,13 +66,13 @@ parser.add_argument('--hidden_dims',type=int,default=256)
 parser.add_argument('--critic_lr',type=float,default=3e-4) 
 parser.add_argument('--actor_lr',type=float,default=3e-4) 
 parser.add_argument('--temp_lr',type=float,default=3e-4) 
-parser.add_argument('--momentum',type=float,default=0.9) 
-parser.add_argument('--b2',type=float,default=0.999) 
+parser.add_argument('--momentum',type=float,default=0.5) 
+parser.add_argument('--b2',type=float,default=0.99) 
 parser.add_argument('--temperature',type=float,default=1.) 
 
 parser.add_argument('--discount_actor',type=str2bool,default=False)
 parser.add_argument('--discount_entropy',type=str2bool,default=False) 
-parser.add_argument('--on_policy_data',type=str2bool,default=False)
+parser.add_argument('--on_policy_data',type=str2bool,default=True   )
 parser.add_argument('--adaptive_critics',type=str2bool,default=False) 
 parser.add_argument('--min_target',type=str2bool,default=False)
 parser.add_argument('--use_layer_norm',type=str2bool,default=True)
@@ -79,7 +82,7 @@ parser.add_argument('--gae_lambda',type=float,default=0.)
 
 parser.add_argument('--episode_based',type=str2bool,default=False) 
 parser.add_argument('--minibatch',type=str2bool,default=False) 
-parser.add_argument('--buffer_size',type=int,default=25_000) 
+parser.add_argument('--buffer_size',type=int,default=50_000) 
 parser.add_argument('--policy_steps',type=int,default=5000) 
 parser.add_argument('--num_epochs',type=int,default=20) 
 parser.add_argument('--num_critic_updates',type=int,default=200)
@@ -177,8 +180,8 @@ def train(args):
                     b2=args.b2,
                     clipping_ratio=args.clipping_ratio,
                     num_actor_updates=args.num_actor_updates,
-                    actor_hidden_dims=(128,128),
-                    critic_hidden_dims=(128,128),
+                    actor_hidden_dims=(256,256),
+                    critic_hidden_dims=(256,256),
                     use_layer_norm= args.use_layer_norm,
                     gae_lambda=args.gae_lambda,
                     minibatch = args.minibatch,
@@ -224,8 +227,10 @@ def train(args):
                     
                             
                     ### Update actor ###
-                    #actor_batch = actor_buffer.get_all()    
-                    actor_batch = replay_buffer.get_all()
+                    if args.on_policy_data:
+                        actor_batch = actor_buffer.get_all()
+                    else:
+                        actor_batch = replay_buffer.get_all()
                     
                     #agent, actor_update_info = agent.update_actor(actor_batch)    
                     agent,actor_update_info = agent.update_actor_seq(actor_batch)

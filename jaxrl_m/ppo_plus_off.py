@@ -1,4 +1,3 @@
-
 import jax.random
 import flax
 import flax.linen as nn
@@ -148,7 +147,7 @@ class SACAgent(flax.struct.PyTreeNode):
         #idxs = jax.random.choice(agent.rng, a=transitions['observations'].shape[0], shape=(num_updates, 250), replace=True)
         n_batches = transitions['observations'].shape[0]//250
         idxs = jnp.arange(transitions['observations'].shape[0])
-        #idxs = jax.random.permutation(agent.rng, idxs)
+        idxs = jax.random.permutation(agent.rng, idxs)
         batch_size = idxs.shape[0] // n_batches
         idxs = idxs[:batch_size * n_batches].reshape((n_batches, batch_size))
         
@@ -166,13 +165,15 @@ class SACAgent(flax.struct.PyTreeNode):
             'min_ratio':0.0,
         }
         initial_carry = (agent, dummy_info)  # (agent, dummy_info)
-        (final_agent, final_info), all_infos = jax.lax.scan(
-            scan_body_actor, 
-            initial_carry, 
-            batches
+        (final_agent, _), all_infos = jax.lax.scan(
+            scan_body_actor,
+            initial_carry,
+            batches,
         )
         
-        return final_agent, final_info
+        # aggregate across the time dimension (axis=0)
+        agg_info = jax.tree_util.tree_map(lambda x: x.mean(0), all_infos)
+        return final_agent, agg_info
 
 
     

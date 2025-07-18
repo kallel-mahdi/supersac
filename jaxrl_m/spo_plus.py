@@ -1,4 +1,3 @@
-
 import jax.random
 import flax
 import flax.linen as nn
@@ -9,10 +8,12 @@ import optax
 
 from jaxrl_m.common import TrainState, nonpytree_field
 from jaxrl_m.networks import OriginalCritic,OriginalV, Policy,ensemblize
-from jaxrl_m.typing import *
+from jaxrl_m.type_aliases import *
 import jax.lax as lax
 import chex
 from functools import partial
+
+import ml_collections
 
 def get_batch(i,batches):
     return  jax.tree.map(lambda x: x[i], batches)
@@ -186,14 +187,14 @@ class SACAgent(flax.struct.PyTreeNode):
             logratio = new_logp - logp
             ratio = jnp.exp(logratio)
 
-            # Calculate how much policy is changing
+            # # Calculate how much policy is changing
             approx_kl = ((ratio - 1) - logratio).mean()
 
-            # Policy loss
-            clip_coef = agent.config["clipping_ratio"] ##default 0.2 
+            # # Policy loss
+            # clip_coef = agent.config["clipping_ratio"] ##default 0.2 
             
-            actor_loss1 = masks*adv * ratio
-            actor_loss2 = masks*adv * jnp.clip(ratio, 1 - clip_coef, 1 + clip_coef)
+            # actor_loss1 = masks*adv * ratio
+            # actor_loss2 = masks*adv * jnp.clip(ratio, 1 - clip_coef, 1 + clip_coef)
 
             # if agent.config['discount_actor']:
             #     #jax.debug.print("🤯 HELLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLL{x} 🤯", x=discounts[:100])
@@ -203,6 +204,7 @@ class SACAgent(flax.struct.PyTreeNode):
             
             actor_loss_spo_terms = masks * adv * ratio - (jnp.abs(masks * adv) / (2 * agent.config["clipping_ratio"])) * (ratio - 1)**2
             actor_loss = -actor_loss_spo_terms.mean()
+            
                 
             ### Pad Q and logits because actor buffer is padded ###
             logp = masks * new_logp
@@ -215,7 +217,12 @@ class SACAgent(flax.struct.PyTreeNode):
             return actor_loss, {
                 'actor_loss': actor_loss,
                 'entropy': entropy,
-                'approx_kl':approx_kl
+                'approx_kl':approx_kl,
+                'mean_ratio':ratio.mean(),
+                'max_ratio':ratio.max(),
+                'min_ratio':ratio.min(),
+                'max_adv':adv.max(),
+                'min_adv':adv.min()
             }
             
         
@@ -234,6 +241,7 @@ class SACAgent(flax.struct.PyTreeNode):
             return temp_loss, {
                 'temp_loss': temp_loss,
                 'temperature': temperature,
+                
             }
             
 
@@ -395,18 +403,16 @@ def create_learner(
         rng = jax.random.PRNGKey(seed)
         rng, actor_key, critic_key = jax.random.split(rng, 3)
 
-        if activation_fn == 'relu':
-            activations = nn.relu
-        elif activation_fn == 'silu':
-            activations = nn.silu 
-        else:
-            activations = nn.tanh
+        activations = nn.relu if activation_fn == 'relu' else nn.tanh
+        #final_fc_init_scale = 1. if activation_fn == 'relu' else 1e-2
+        final_fc_init_scale = 1e-2
 
         action_dim = actions.shape[-1]
-        actor_def = Policy(actor_hidden_dims, action_dim=action_dim,activations=activations,
+        actor_def = Policy(actor_hidden_dims, action_dim=action_dim,activations=activations,final_fc_init_scale=final_fc_init_scale,
             state_dependent_std=state_dependent_std, tanh_squash_distribution=tanh_squash_distribution,use_layer_norm=use_layer_norm,use_bias=use_bias)
 
         critic_def = ensemblize(OriginalCritic,num_critics)(hidden_dims=critic_hidden_dims,use_layer_norm=use_layer_norm,activations=activations)
+        #critic_params = critic_def.init(critic_key, observations, actions)['params']
         critic_params = critic_def.init(critic_key, observations, actions)['params']
         critic = TrainState.create(critic_def, critic_params, tx=optax.adam(learning_rate=critic_lr))
           

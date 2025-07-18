@@ -29,13 +29,13 @@ import jax.numpy as jnp
 ###############################
 
 
-# ###FOR TANH
-def tanh_init(scale: Optional[float] = jnp.sqrt(2.0)):
-    return nn.initializers.orthogonal(scale)
+# # ###FOR TANH
+# def tanh_init(scale: Optional[float] = jnp.sqrt(2.0)):
+#     return nn.initializers.orthogonal(scale)
 
 
-def relu_init(scale: Optional[float] = 1.0):
-    return nn.initializers.variance_scaling(scale, "fan_avg", "uniform")
+# def relu_init(scale: Optional[float] = 1.0):
+#     return nn.initializers.variance_scaling(scale, "fan_avg", "uniform")
 
 
 class MLP(nn.Module):
@@ -51,9 +51,8 @@ class MLP(nn.Module):
     def __call__(self, x: jnp.ndarray, train=False) -> jnp.ndarray:
         for i, size in enumerate(self.hidden_dims):
             
-            kernel_init = tanh_init() if self.activations == nn.tanh else relu_init()
 
-            x = nn.Dense(size, kernel_init=kernel_init,use_bias=self.use_bias)(x)
+            x = nn.Dense(size)(x)
 
             if i + 1 < len(self.hidden_dims) or self.activate_final:
                 if self.use_layer_norm:
@@ -97,8 +96,8 @@ class OriginalCritic(nn.Module):
         
         self.sow('intermediates', 'features', intermediate)
 
-        kernel_init = tanh_init() if self.activations == nn.tanh else relu_init()
-        Q = nn.Dense(1, kernel_init=kernel_init)(intermediate)
+        
+        Q = nn.Dense(1)(intermediate)
         
         return jnp.squeeze(Q, -1)
     
@@ -117,8 +116,7 @@ class OriginalV(nn.Module):
         
         self.sow('intermediates', 'features', intermediate)
 
-        kernel_init = tanh_init() if self.activations == nn.tanh else relu_init()
-        Q = nn.Dense(1, kernel_init=kernel_init)(intermediate)
+        Q = nn.Dense(1)(intermediate)
         
         return jnp.squeeze(Q, -1)
 
@@ -153,8 +151,7 @@ class Policy(nn.Module):
     use_layer_norm : bool
     activations: Callable[[jnp.ndarray], jnp.ndarray]
     tanh_squash_distribution: bool 
-    final_fc_init_scale: float = 1e-2
-    log_std_min: Optional[float] = -10
+    log_std_min: Optional[float] = -5
     log_std_max: Optional[float] = 2
     state_dependent_std: bool = True
     use_bias : bool = True
@@ -174,17 +171,16 @@ class Policy(nn.Module):
             use_bias= self.use_bias,
         )(observations)
 
-        kernel_init = tanh_init if self.activations == nn.tanh else relu_init
 
         means = nn.Dense(
-            self.action_dim, kernel_init=kernel_init(self.final_fc_init_scale),use_bias=self.use_bias,name="means"
+            self.action_dim,name="means"
         )(outputs)
         if self.state_dependent_std:
             log_stds = nn.Dense(
-                self.action_dim, kernel_init=kernel_init(self.final_fc_init_scale),use_bias=self.use_bias,name="log_stds"
+                self.action_dim,name="log_stds"
             )(outputs)
         else:
-            log_stds = self.param("log_stds", jax.nn.initializers.constant(-4.6), (self.action_dim,))
+            log_stds = self.param("log_stds", (self.action_dim,))
 
         log_stds = jnp.clip(log_stds, self.log_std_min, self.log_std_max)
 

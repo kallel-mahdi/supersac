@@ -343,6 +343,8 @@ class SACAgent(flax.struct.PyTreeNode):
         
         adv = (q-agent.temp()*logp) - (tmp_v - agent.temp() *tmp_logp)### This one worked
         adv = adv.reshape(-1)
+        # Normalize advantages
+        #adv = (adv - jnp.mean(adv)) / (jnp.std(adv) + 1e-8)
         
 
         new_actor, actor_info = agent.actor.apply_loss_fn(actor_loss_fn,True,adv,batch)#adv
@@ -442,8 +444,8 @@ def create_learner(
         rng = jax.random.PRNGKey(seed)
         rng, actor_key, critic_key = jax.random.split(rng, 3)
 
-        activations = nn.relu if activation_fn == 'relu' else nn.tanh
-        final_fc_init_scale = 1. if activation_fn == 'relu' else 1e-2
+        activations = nn.silu if activation_fn == 'silu' else nn.tanh
+        final_fc_init_scale = 1. if activation_fn == 'silu' else 1e-2
         #final_fc_init_scale = 1.
 
         action_dim = actions.shape[-1]

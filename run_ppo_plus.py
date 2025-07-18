@@ -55,7 +55,7 @@ parser.add_argument('--seed',type=int,default=21)
 
 parser.add_argument('--algo_name', type=str, default='superppo', help='the name of the RL algorithm')
 parser.add_argument('--project_name',type=str,default="single_exp") 
-parser.add_argument('--env_name',type=str,default="Ant-v5") 
+parser.add_argument('--env_name',type=str,default="HalfCheetah-v5") 
 parser.add_argument('--max_steps',type=int,default=1_000_000) 
 parser.add_argument('--max_episode_steps',type=int,default=1000) 
 parser.add_argument('--gamma',type=float,default=0.99)
@@ -72,7 +72,7 @@ parser.add_argument('--temperature',type=float,default=1.)
 
 parser.add_argument('--discount_actor',type=str2bool,default=False)
 parser.add_argument('--discount_entropy',type=str2bool,default=False) 
-parser.add_argument('--on_policy_data',type=str2bool,default=True   )
+parser.add_argument('--on_policy_data',type=str2bool,default=False   )
 parser.add_argument('--adaptive_critics',type=str2bool,default=False) 
 parser.add_argument('--min_target',type=str2bool,default=False)
 parser.add_argument('--use_layer_norm',type=str2bool,default=True)
@@ -87,7 +87,7 @@ parser.add_argument('--policy_steps',type=int,default=5000)
 parser.add_argument('--num_epochs',type=int,default=20) 
 parser.add_argument('--num_critic_updates',type=int,default=200)
 parser.add_argument('--num_actor_updates',type=int,default=1)
-parser.add_argument('--activation_fn',type=str,default='tanh')
+parser.add_argument('--activation_fn',type=str,default='relu')
 parser.add_argument('--stable_scheme',type=str2bool,default=True)
 parser.add_argument('--bound_actions',type=str2bool,default=True)
 
@@ -227,10 +227,10 @@ def train(args):
                     
                             
                     ### Update actor ###
-                    if args.on_policy_data:
-                        actor_batch = actor_buffer.get_all()
-                    else:
-                        actor_batch = replay_buffer.get_all()
+                    #if args.on_policy_data:
+                    actor_batch = actor_buffer.get_all()
+                    # else:
+                    #     actor_batch = replay_buffer.get_all()
                     
                     #agent, actor_update_info = agent.update_actor(actor_batch)    
                     agent,actor_update_info = agent.update_actor_seq(actor_batch)

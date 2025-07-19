@@ -57,7 +57,7 @@ class MLP(nn.Module):
             
             kernel_init = tanh_init() if self.activations == nn.tanh else relu_init()
 
-            x = nn.Dense(size, kernel_init=kernel_init,use_bias=self.use_bias)(x)
+            x = nn.Dense(size)(x)
 
             if i + 1 < len(self.hidden_dims) or self.activate_final:
                 if self.use_layer_norm:
@@ -102,7 +102,7 @@ class OriginalCritic(nn.Module):
         self.sow('intermediates', 'features', intermediate)
 
         kernel_init = tanh_init() if self.activations == nn.tanh else relu_init()
-        Q = nn.Dense(1, kernel_init=kernel_init)(intermediate)
+        Q = nn.Dense(1, )(intermediate)
         
         return jnp.squeeze(Q, -1)
     
@@ -122,7 +122,7 @@ class OriginalV(nn.Module):
         self.sow('intermediates', 'features', intermediate)
 
         kernel_init = tanh_init() if self.activations == nn.tanh else relu_init()
-        Q = nn.Dense(1, kernel_init=kernel_init)(intermediate)
+        Q = nn.Dense(1, )(intermediate)
         
         return jnp.squeeze(Q, -1)
 
@@ -176,21 +176,18 @@ class Policy(nn.Module):
             activate_final=True,
             use_layer_norm=self.use_layer_norm,
             activations=self.activations,
-            use_bias= self.use_bias,
         )(observations)
 
         kernel_init = tanh_init if self.activations == nn.tanh else relu_init
 
         means = nn.Dense(
-            self.action_dim, kernel_init=kernel_init(self.final_fc_init_scale),use_bias=self.use_bias,name="means"
+            self.action_dim,name="means"
         )(outputs)
-        if self.state_dependent_std:
-            log_stds = nn.Dense(
-                self.action_dim, kernel_init=kernel_init(self.final_fc_init_scale),use_bias=self.use_bias,name="log_stds"
+       
+        log_stds = nn.Dense(
+                self.action_dim,name="log_stds"
             )(outputs)
-        else:
-            log_stds = self.param("log_stds", jax.nn.initializers.constant(-4.6), (self.action_dim,))
-
+     
         log_stds = jnp.clip(log_stds, self.log_std_min, self.log_std_max)
 
         distribution = distrax.MultivariateNormalDiag(

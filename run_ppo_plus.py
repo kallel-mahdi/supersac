@@ -61,14 +61,14 @@ parser.add_argument('--max_episode_steps',type=int,default=1000)
 parser.add_argument('--gamma',type=float,default=0.99)
 parser.add_argument('--entropy_coeff',type=float,default=0.5) 
 
-parser.add_argument('--num_critics',type=int,default=5)
+parser.add_argument('--num_critics',type=int,default=2)
 parser.add_argument('--hidden_dims',type=int,default=256) 
 parser.add_argument('--critic_lr',type=float,default=3e-4) 
 parser.add_argument('--actor_lr',type=float,default=3e-4) 
 parser.add_argument('--temp_lr',type=float,default=3e-4) 
 parser.add_argument('--momentum',type=float,default=0.5) 
 parser.add_argument('--b2',type=float,default=0.99) 
-parser.add_argument('--temperature',type=float,default=1.) 
+parser.add_argument('--temperature',type=float,default=0.1) 
 
 parser.add_argument('--discount_actor',type=str2bool,default=False)
 parser.add_argument('--discount_entropy',type=str2bool,default=False) 
@@ -84,10 +84,10 @@ parser.add_argument('--episode_based',type=str2bool,default=False)
 parser.add_argument('--minibatch',type=str2bool,default=False) 
 parser.add_argument('--buffer_size',type=int,default=50_000) 
 parser.add_argument('--policy_steps',type=int,default=5000) 
-parser.add_argument('--num_epochs',type=int,default=20) 
+parser.add_argument('--num_epochs',type=int,default=25) 
 parser.add_argument('--num_critic_updates',type=int,default=200)
 parser.add_argument('--num_actor_updates',type=int,default=1)
-parser.add_argument('--activation_fn',type=str,default='relu')
+parser.add_argument('--activation_fn',type=str,default='silu')
 parser.add_argument('--stable_scheme',type=str2bool,default=True)
 parser.add_argument('--bound_actions',type=str2bool,default=True)
 
@@ -180,8 +180,8 @@ def train(args):
                     b2=args.b2,
                     clipping_ratio=args.clipping_ratio,
                     num_actor_updates=args.num_actor_updates,
-                    actor_hidden_dims=(256,256),
-                    critic_hidden_dims=(256,256),
+                    actor_hidden_dims=(512,512,512),
+                    critic_hidden_dims=(512,512,512),
                     use_layer_norm= args.use_layer_norm,
                     gae_lambda=args.gae_lambda,
                     minibatch = args.minibatch,
@@ -224,13 +224,16 @@ def train(args):
                     logging.debug('update critics')
                     transitions = replay_buffer.get_all()
                     agent = agent.update_critics_seq(transitions)
+                
+                
+                for _ in range(args.num_epochs):
                     
                             
                     ### Update actor ###
                     #if args.on_policy_data:
-                    actor_batch = actor_buffer.get_all()
-                    # else:
-                    #     actor_batch = replay_buffer.get_all()
+                    #actor_batch = actor_buffer.get_all()
+                    
+                    actor_batch = replay_buffer.get_all()
                     
                     #agent, actor_update_info = agent.update_actor(actor_batch)    
                     agent,actor_update_info = agent.update_actor_seq(actor_batch)

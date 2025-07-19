@@ -131,10 +131,8 @@ class SACAgent(flax.struct.PyTreeNode):
 
         #if n_batches <100 or num_updates is not None:
 
-        if n_batches < 200:
-            #n_batches = jnp.maximum(200,num_updates)
-            n_batches = 200
-            idxs = jax.random.choice(agent.rng, a=transitions['observations'].shape[0], shape=(n_batches, 250), replace=True)
+        
+        idxs = jax.random.choice(agent.rng, a=transitions['observations'].shape[0], shape=(n_batches, 250), replace=True)
 
         batches = jax.vmap(lambda i: jax.tree.map(lambda x: x[i], transitions))(idxs)
         agent,batches = jax.lax.fori_loop(0,n_batches,body,(agent,batches))
@@ -163,6 +161,8 @@ class SACAgent(flax.struct.PyTreeNode):
             'temperature': 0.0,
             'max_ratio':0.0,
             'min_ratio':0.0,
+            'percent_outliers':0.0,
+            
         }
         initial_carry = (agent, dummy_info)  # (agent, dummy_info)
         (final_agent, _), all_infos = jax.lax.scan(
@@ -217,6 +217,11 @@ class SACAgent(flax.struct.PyTreeNode):
             logp = old_pre_log_probs - jnp.sum(2 * (jnp.log(2) - pre_actions - jax.nn.softplus(-2 * pre_actions)), axis=-1)            
             logratio = new_pre_log_probs - old_pre_log_probs
             
+            
+            
+            
+            
+            
             #logratio = jnp.clip(logratio, jnp.log(1e-3), jnp.log(1e3))
             
             
@@ -237,6 +242,8 @@ class SACAgent(flax.struct.PyTreeNode):
             #######################################
             
             ratio = jnp.exp(logratio)
+            
+            
          
          
             # Calculate how much policy is changing
@@ -245,12 +252,14 @@ class SACAgent(flax.struct.PyTreeNode):
             # Policy loss
             clip_coef = agent.config["clipping_ratio"] ##default 0.2 
             masks = batch["masks"]
+            outliers = (ratio > 1 + 2 * clip_coef) | (ratio < 1 - 2 * clip_coef)
             # actor_loss1 = masks*adv * ratio
             # actor_loss2 = masks*adv * jnp.clip(ratio, 1 - clip_coef, 1 + clip_coef)
             # actor_loss = -jnp.minimum(actor_loss1,actor_loss2).mean()
             
             
-            actor_loss_spo_terms = batch["masks"] * adv * ratio - (jnp.abs(batch["masks"] * adv) / (2 * agent.config["clipping_ratio"])) * (ratio - 1)**2
+            #actor_loss_spo_terms = batch["masks"] * adv * ratio - (jnp.abs(batch["masks"] * adv) / (2 * agent.config["clipping_ratio"])) * (ratio - 1)**2
+            actor_loss_spo_terms = (1.-outliers)* batch["masks"] * adv * ratio - (jnp.abs(batch["masks"] * adv) / (2 * agent.config["clipping_ratio"])) * (ratio - 1)**2
             actor_loss = -actor_loss_spo_terms.mean()
             
             
@@ -266,6 +275,7 @@ class SACAgent(flax.struct.PyTreeNode):
                 'approx_kl':approx_kl,
                 'max_ratio':jnp.max(ratio),
                 'min_ratio':jnp.min(ratio),
+                'percent_outliers': jnp.mean((ratio > 1 + 2 * clip_coef) | (ratio < 1 - 2 * clip_coef)),
               
             }
             
@@ -290,7 +300,7 @@ class SACAgent(flax.struct.PyTreeNode):
             # 2. Define the allowed range and the condition
             min_ratio = 1.0 - clip_coef
             max_ratio = 1.0 + clip_coef
-            is_within_bounds = (temp_ratio >= min_ratio) & (temp_ratio <= max_ratio) & (new_temperature > 0.01)
+            is_within_bounds = (temp_ratio >= min_ratio) & (temp_ratio <= max_ratio)
             
             # 3. Calculate the standard loss
             # We stop the gradient on the error term as is standard practice.
@@ -301,11 +311,12 @@ class SACAgent(flax.struct.PyTreeNode):
             # If `is_within_bounds` is True, use `standard_loss`.
             # If `is_within_bounds` is False, use `0.0`.
             temp_loss = jnp.where(is_within_bounds, standard_loss, 0.0)
+            temp_loss = jnp.where((new_temperature < 0.001) & (temp_loss > 0), 0.0, temp_loss.mean())
             
        
             
             return temp_loss.mean(), {
-                'temp_loss': temp_loss.mean(),
+                'temp_loss': temp_loss,
                 'temperature': new_temperature,
             }
             
@@ -444,8 +455,8 @@ def create_learner(
         rng = jax.random.PRNGKey(seed)
         rng, actor_key, critic_key = jax.random.split(rng, 3)
 
-        activations = nn.silu if activation_fn == 'silu' else nn.tanh
-        final_fc_init_scale = 1. if activation_fn == 'silu' else 1e-2
+        activations = nn.relu if activation_fn == 'relu' else nn.silu if activation_fn == 'silu' else nn.tanh
+        final_fc_init_scale = 1. if activation_fn == 'relu' else 1e-2
         #final_fc_init_scale = 1.
 
         action_dim = actions.shape[-1]

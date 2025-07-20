@@ -35,8 +35,8 @@ np.random.seed(42)
 seeds = list(np.random.randint(0, 1e6, 5))
 configs = itertools.product(
     seeds,
-    #["InvertedDoublePendulum-v5", "Hopper-v5", "Walker2d-v5", "HalfCheetah-v5", "Ant-v5", "Humanoid-v5"],
-    ["walk","stand","trot","run"],
+    ["Hopper-v5", "Walker2d-v5", "HalfCheetah-v5", "Ant-v5", "Humanoid-v5"],
+    #["walk","stand","trot","run"],
     [args.project_name],
     [args.gamma],
     [args.max_steps],

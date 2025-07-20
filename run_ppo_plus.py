@@ -55,7 +55,7 @@ parser.add_argument('--seed',type=int,default=21)
 
 parser.add_argument('--algo_name', type=str, default='superppo', help='the name of the RL algorithm')
 parser.add_argument('--project_name',type=str,default="single_exp") 
-parser.add_argument('--env_name',type=str,default="HalfCheetah-v5") 
+parser.add_argument('--env_name',type=str,default="Ant-v5") 
 parser.add_argument('--max_steps',type=int,default=1_000_000) 
 parser.add_argument('--max_episode_steps',type=int,default=1000) 
 parser.add_argument('--gamma',type=float,default=0.99)
@@ -66,9 +66,9 @@ parser.add_argument('--hidden_dims',type=int,default=256)
 parser.add_argument('--critic_lr',type=float,default=3e-4) 
 parser.add_argument('--actor_lr',type=float,default=3e-4) 
 parser.add_argument('--temp_lr',type=float,default=3e-4) 
-parser.add_argument('--momentum',type=float,default=0.5) 
+parser.add_argument('--momentum',type=float,default=0.) 
 parser.add_argument('--b2',type=float,default=0.99) 
-parser.add_argument('--temperature',type=float,default=0.1) 
+parser.add_argument('--temperature',type=float,default=1.) 
 
 parser.add_argument('--discount_actor',type=str2bool,default=False)
 parser.add_argument('--discount_entropy',type=str2bool,default=False) 
@@ -90,6 +90,7 @@ parser.add_argument('--num_actor_updates',type=int,default=1)
 parser.add_argument('--activation_fn',type=str,default='silu')
 parser.add_argument('--stable_scheme',type=str2bool,default=True)
 parser.add_argument('--bound_actions',type=str2bool,default=True)
+parser.add_argument('--optimizer',type=str,default='sgd', choices=['adam', 'sgd'])
 
 args = parser.parse_args()
 print(args)
@@ -180,8 +181,8 @@ def train(args):
                     b2=args.b2,
                     clipping_ratio=args.clipping_ratio,
                     num_actor_updates=args.num_actor_updates,
-                    actor_hidden_dims=(512,512,512),
-                    critic_hidden_dims=(512,512,512),
+                    actor_hidden_dims=(args.hidden_dims,args.hidden_dims),
+                    critic_hidden_dims=(args.hidden_dims,args.hidden_dims),
                     use_layer_norm= args.use_layer_norm,
                     gae_lambda=args.gae_lambda,
                     minibatch = args.minibatch,
@@ -189,6 +190,7 @@ def train(args):
                     state_dependent_std=True,
                     tanh_squash_distribution= not args.stable_scheme and args.bound_actions,## This should be false
                     tanh_squash_actions= args.stable_scheme and args.bound_actions, ## This should be true
+                    optimizer=args.optimizer,
                     #**FLAGS.config
                     )
 

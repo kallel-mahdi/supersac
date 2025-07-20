@@ -311,7 +311,7 @@ class SACAgent(flax.struct.PyTreeNode):
             # If `is_within_bounds` is True, use `standard_loss`.
             # If `is_within_bounds` is False, use `0.0`.
             temp_loss = jnp.where(is_within_bounds, standard_loss, 0.0)
-            temp_loss = jnp.where((new_temperature < 0.001) & (temp_loss > 0), 0.0, temp_loss.mean())
+            temp_loss = jnp.where((new_temperature < 0.01) & (temp_loss > 0), 0.0, temp_loss.mean())
             
        
             
@@ -444,6 +444,7 @@ def create_learner(
                 tanh_squash_actions=True, ## This should be true
                 store_grads = False,
                 use_bias = True,
+                optimizer: str = 'sgd',
                 
            
                 
@@ -473,9 +474,16 @@ def create_learner(
         temp_def = Temperature(temperature)
         temp_params = temp_def.init(rng)['params']
         
+        if optimizer == 'adam':
+            opt = optax.adamw(learning_rate=actor_lr,b1=momentum,b2=b2,weight_decay=1e-4)
+        elif optimizer == 'sgd':
+            opt = optax.sgd(learning_rate=actor_lr,momentum=momentum)
+        else:
+            raise ValueError(f"Invalid optimizer: {optimizer}")
+        
         tx = optax.chain(
             optax.clip_by_global_norm(0.5), ## This is necessary to avoid exploding gradients due to numerical instabilities.
-            optax.adamw(learning_rate=actor_lr,b1=momentum,b2=b2,weight_decay=1e-4),
+            opt,
         )
         actor = TrainState.create(actor_def, actor_params, tx=tx)
         temp = TrainState.create(temp_def, temp_params, tx=optax.adam(learning_rate=temp_lr,b1=momentum,b2=b2)) ##placeholder

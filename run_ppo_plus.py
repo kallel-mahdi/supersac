@@ -8,31 +8,27 @@ import jax.numpy as jnp
 
 
 import os
-from collections import deque
-from functools import partial
+
 
 import gymnasium as gym
 import jax
 import numpy as np
 import tqdm
 import wandb
-from jax import config
+
 
 from jaxrl_m.dataset import ActorReplayBuffer, ReplayBuffer
 
-from jaxrl_m.evaluation import (EpisodeMonitor, evaluate, flatten,
-                                supply_rng)
-from jaxrl_m.rollout import (rollout_policy, rollout_policy2)
-from jaxrl_m.utils import flatten_rollouts
-from jaxrl_m.wandb import default_wandb_config, get_flag_dict, setup_wandb
-from jaxrl_m.ppo_plus import *
+from jaxrl_m.rollout import rollout_policy
+from jaxrl_m.wandb import setup_wandb
+from jaxrl_m.ppo_plus import SuperPPOConfig, create_learner
 from jaxrl_m.utils import *
 from jaxrl_m.normalize import *
 from jaxrl_m.dmc import DMCGym
+from cosine_distance_ppo import evaluate_gradient_quality_ppo
 import random
 from dm_control import suite
 
-#logging.basicConfig(level=logging.DEBUG)  # Ignore warnings and below (INFO, WARNING, etc.)
 
 
 # Set env variables
@@ -44,46 +40,34 @@ os.environ['TF_DETERMINISTIC_OPS'] = '1'
 os.environ['XLA_FLAGS']='--xla_gpu_deterministic_ops=true'
 
 
-
-##############################
 parser = argparse.ArgumentParser()
 
 parser.add_argument('--seed',type=int,default=42) 
 
 parser.add_argument('--algo_name', type=str, default='superppo', help='the name of the RL algorithm')
 parser.add_argument('--project_name',type=str,default="single_exp_off") 
-parser.add_argument('--env_name',type=str,default="Humanoid-v5") 
+parser.add_argument('--env_name',type=str,default="Ant-v5") 
 parser.add_argument('--max_steps',type=int,default=1_000_000) 
 parser.add_argument('--max_episode_steps',type=int,default=1000) 
 parser.add_argument('--gamma',type=float,default=0.99)
 parser.add_argument('--entropy_coeff',type=float,default=1.) 
 
-parser.add_argument('--num_critics',type=int,default=5)
+parser.add_argument('--num_critics',type=int,default=2)
 parser.add_argument('--hidden_dims',type=int,default=256) 
-parser.add_argument('--critic_lr',type=float,default=3e-4) 
-parser.add_argument('--actor_lr',type=float,default=3e-4) 
-parser.add_argument('--temp_lr',type=float,default=3e-4) 
-parser.add_argument('--momentum',type=float,default=0.9) 
-parser.add_argument('--b2',type=float,default=0.999) 
-parser.add_argument('--temperature',type=float,default=0.1) 
+parser.add_argument('--temperature',type=float,default=1.) 
 
-parser.add_argument('--discount_actor',type=str2bool,default=False)
-parser.add_argument('--discount_entropy',type=str2bool,default=False) 
+
 parser.add_argument('--on_policy_data',type=str2bool,default=False)
-parser.add_argument('--adaptive_critics',type=str2bool,default=False) 
 parser.add_argument('--min_target',type=str2bool,default=False)
 parser.add_argument('--use_layer_norm',type=str2bool,default=True)
 
 parser.add_argument('--clipping_ratio',type=float,default=0.25) 
 parser.add_argument('--gae_lambda',type=float,default=0.5) 
 
-parser.add_argument('--episode_based',type=str2bool,default=False) 
-parser.add_argument('--minibatch',type=str2bool,default=True) 
 parser.add_argument('--buffer_size',type=int,default=50_000) 
 parser.add_argument('--policy_steps',type=int,default=5000) 
 parser.add_argument('--num_epochs',type=int,default=10) 
 parser.add_argument('--num_critic_updates',type=int,default=5000)
-parser.add_argument('--num_actor_updates',type=int,default=1)
 parser.add_argument('--activation_fn',type=str,default='tanh')
 parser.add_argument('--stable_scheme',type=str2bool,default=True)
 parser.add_argument('--bound_actions',type=str2bool,default=True)
@@ -97,18 +81,9 @@ random.seed(args.seed)
 np.random.seed(args.seed)
 jax_rng = jax.random.PRNGKey(args.seed)
 
-# Enable JAX NaN debugging to help identify numerical issues
-jax.config.update("jax_debug_nans", True)
-os.environ["JAX_TRACEBACK_FILTERING"] = "off"
-# Enable JAX float64 precision for better numerical stability
-jax.config.update("jax_enable_x64", True)
-jax.config.update("jax_default_matmul_precision", "highest")
 
 
-#jax.config.update("jax_disable_jit", True)
-#config.update("jax_debug_nans", True)
-# config.update("jax_default_matmul_precision", "highest")
-#config.update("jax_log_compiles", True)
+
 
 def train(args):
     
@@ -158,55 +133,32 @@ def train(args):
     actor_buffer = ActorReplayBuffer.create(example_transition, size=args.policy_steps)
     #actor_buffer = ActorReplayBuffer.create(example_transition, size=int(args.buffer_size))
 
-    agent = create_learner(args.seed,
-                        
-                    observations=example_transition['observations'][None],
-                    actions =example_transition['actions'][None],
-                    max_steps=max_steps,
-                    discount=args.gamma,
-                    discount_actor=args.discount_actor,
-                    min_target=args.min_target,
-                    discount_entropy=args.discount_entropy,
-                    adaptive_critics=args.adaptive_critics,
-                    num_critics= args.num_critics,
-                    entropy_coeff=args.entropy_coeff,
-                    temperature=args.temperature,
-                    actor_lr=args.actor_lr,
-                    critic_lr=args.critic_lr,
-                    temp_lr=args.temp_lr,
-                    momentum=args.momentum,
-                    b2=args.b2,
-                    clipping_ratio=args.clipping_ratio,
-                    num_actor_updates=args.num_actor_updates,
-                    actor_hidden_dims=(args.hidden_dims,args.hidden_dims),
-                    critic_hidden_dims=(args.hidden_dims,args.hidden_dims),
-                    use_layer_norm= args.use_layer_norm,
-                    gae_lambda=args.gae_lambda,
-                    minibatch = args.minibatch,
-                    activation_fn = args.activation_fn,
-                    state_dependent_std=True,
-                    tanh_squash_distribution= not args.stable_scheme and args.bound_actions,## This should be false
-                    tanh_squash_actions= args.stable_scheme and args.bound_actions, ## This should be true
-                    #**FLAGS.config
-                    )
+    # Create configuration from command line arguments
+    config = SuperPPOConfig.from_args(args)
+    
+    # Create agent with clean, organized config
+    agent = create_learner(
+        config=config,
+        observations=example_transition['observations'][None],
+        actions=example_transition['actions'][None]
+    )
 
     exploration_metrics = dict()
     exploration_rng = jax.random.PRNGKey(0)
     i = 0
     unlogged_steps,cached_steps = 0,0
     
-    rollout_fn = rollout_policy if args.episode_based else rollout_policy2
-
+    
     with tqdm.tqdm(total=max_steps) as pbar:
         
         while (i < max_steps):
                 
                 logging.debug('policy rollout')
                 if args.on_policy_data: replay_buffer = replay_buffer.reset()
-                replay_buffer,actor_buffer,policy_return,undisc_policy_return,num_steps = rollout_fn(
+                replay_buffer,actor_buffer,policy_return,undisc_policy_return,num_steps = rollout_policy(
                                                                         agent,env,exploration_rng,
-                                                                        replay_buffer,actor_buffer,eval=False,
-                                                                        discount = args.gamma,max_steps=args.policy_steps)
+                                                                        discount = args.gamma,max_steps=args.policy_steps,
+                                                                        replay_buffer=replay_buffer,actor_buffer=actor_buffer,eval=False)
                          
                 
                 unlogged_steps += num_steps
@@ -280,10 +232,27 @@ def train(args):
                     
                     _,_,policy_return,undisc_policy_return,num_steps = rollout_policy(
                                                                     agent,eval_env,exploration_rng,
-                                                                    None,None,eval=True,
-                                                                    discount = args.gamma,max_rollouts=10)
+                                                                    discount = args.gamma,max_rollouts=10,
+                                                                    replay_buffer=None,actor_buffer=None,eval=True)
                     eval_metrics = {"policy_return": policy_return,"undisc_policy_return": undisc_policy_return}
                     print(eval_metrics)
+                    
+                    # # Evaluate gradient quality
+                    # try:
+                    #     gradient_quality_results = evaluate_gradient_quality_ppo(
+                    #         agent=agent,
+                    #         env=env,
+                    #         replay_buffer=replay_buffer,
+                    #         step_num=i,
+                    #         rollout_steps=50_000,
+                    #         critic_training_steps=5_000,
+                    #         evaluation_batch_size=2_000,
+                    #         num_parallel_envs=6
+                    #     )
+                    #     print(f"Gradient quality evaluation completed: {gradient_quality_results}")
+                    # except Exception as e:
+                    #     print(f"Failed to evaluate gradient quality: {e}")
+                    #     gradient_quality_results = {}
                     
                     eval_metrics = {f'evaluation/{k}': v for k, v in eval_metrics.items()}
                     eval_metrics['n_grads']=int(n_grads)

@@ -199,8 +199,6 @@ args_dict = {
     "critic_hidden_dims": (256,256),
     "actor_hidden_dims": (),
     "use_layer_norm": True,
-    "state_dependent_std": False,
-    "use_bias": False,
     "temp_lr": 3e-4,
     "b2": 0.999,
     "gae_lambda": 0.,

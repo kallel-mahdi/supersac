@@ -187,7 +187,7 @@ def create_learner(
 
         action_dim = actions.shape[-1]
         actor_def = Policy(hidden_dims, action_dim=action_dim,use_layer_norm=False,activations=nn.relu,
-            log_std_min=-10.0, state_dependent_std=True, tanh_squash_distribution=True, final_fc_init_scale=1.0)
+            log_std_min=-10.0, tanh_squash_distribution=True, final_fc_init_scale=1.0)
 
         actor_params = actor_def.init(actor_key, observations)['params']
         actor = TrainState.create(actor_def, actor_params, tx=optax.adam(learning_rate=actor_lr))

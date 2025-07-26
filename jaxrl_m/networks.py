@@ -29,13 +29,25 @@ import jax.numpy as jnp
 ###############################
 
 
-# ###FOR TANH
-def tanh_init(scale: Optional[float] = jnp.sqrt(2.0)):
-    return nn.initializers.orthogonal(scale)
+# Cleaner layer initializer similar to PyTorch's layer_init
+
+def tanh_layer_init(std: float = jnp.sqrt(2.0), bias_const: float = 0.0):
+    """
+    Returns (kernel_init, bias_init) for tanh-activated layers.
+    """
+    kernel_init = nn.initializers.orthogonal(std)
+    bias_init = nn.initializers.constant(bias_const)
+    return kernel_init, bias_init
 
 
-def relu_init(scale: Optional[float] = 1.0):
-    return nn.initializers.variance_scaling(scale, "fan_avg", "uniform")
+def relu_layer_init(std: float = jnp.sqrt(2.0), bias_const: float = 0.0):
+    """
+    Returns (kernel_init, bias_init) for relu-activated layers.
+    """
+    # Sussillo et al. (2014) recommend std ~ sqrt(2) for relu
+    kernel_init = nn.initializers.orthogonal(std)
+    bias_init = nn.initializers.constant(bias_const)
+    return kernel_init, bias_init
 
 
 class MLP(nn.Module):
@@ -44,16 +56,15 @@ class MLP(nn.Module):
     activations: Callable[[jnp.ndarray], jnp.ndarray]     
     use_layer_norm: bool
     activate_final: bool
-    use_bias : bool = True
     
 
     @nn.compact
     def __call__(self, x: jnp.ndarray, train=False) -> jnp.ndarray:
         for i, size in enumerate(self.hidden_dims):
             
-            kernel_init = tanh_init() if self.activations == nn.tanh else relu_init()
+            kernel_init, bias_init = tanh_layer_init() if self.activations == nn.tanh else relu_layer_init()
 
-            x = nn.Dense(size, kernel_init=kernel_init,use_bias=self.use_bias)(x)
+            x = nn.Dense(size, kernel_init=kernel_init, bias_init=bias_init)(x)
 
             if i + 1 < len(self.hidden_dims) or self.activate_final:
                 if self.use_layer_norm:
@@ -97,8 +108,8 @@ class OriginalCritic(nn.Module):
         
         self.sow('intermediates', 'features', intermediate)
 
-        kernel_init = tanh_init() if self.activations == nn.tanh else relu_init()
-        Q = nn.Dense(1, kernel_init=kernel_init)(intermediate)
+        kernel_init, bias_init = tanh_layer_init() if self.activations == nn.tanh else relu_layer_init()
+        Q = nn.Dense(1, kernel_init=kernel_init, bias_init=bias_init)(intermediate)
         
         return jnp.squeeze(Q, -1)
     
@@ -117,8 +128,8 @@ class OriginalV(nn.Module):
         
         self.sow('intermediates', 'features', intermediate)
 
-        kernel_init = tanh_init() if self.activations == nn.tanh else relu_init()
-        Q = nn.Dense(1, kernel_init=kernel_init)(intermediate)
+        kernel_init, bias_init = tanh_layer_init() if self.activations == nn.tanh else relu_layer_init()
+        Q = nn.Dense(1, kernel_init=kernel_init, bias_init=bias_init)(intermediate)
         
         return jnp.squeeze(Q, -1)
 
@@ -156,8 +167,6 @@ class Policy(nn.Module):
     final_fc_init_scale: float = 1e-2
     log_std_min: Optional[float] = -10
     log_std_max: Optional[float] = 2
-    state_dependent_std: bool = True
-    use_bias : bool = True
 
     
 
@@ -171,21 +180,19 @@ class Policy(nn.Module):
             activate_final=True,
             use_layer_norm=self.use_layer_norm,
             activations=self.activations,
-            use_bias= self.use_bias,
         )(observations)
 
-        kernel_init = tanh_init if self.activations == nn.tanh else relu_init
+        # For the final layer, use the specified scale
+        kernel_init, bias_init = tanh_layer_init(self.final_fc_init_scale) if self.activations == nn.tanh else relu_layer_init(self.final_fc_init_scale)
 
         means = nn.Dense(
-            self.action_dim, kernel_init=kernel_init(self.final_fc_init_scale),use_bias=self.use_bias,name="means"
+            self.action_dim, kernel_init=kernel_init, bias_init=bias_init, name="means"
         )(outputs)
-        if self.state_dependent_std:
-            log_stds = nn.Dense(
-                self.action_dim, kernel_init=kernel_init(self.final_fc_init_scale),use_bias=self.use_bias,name="log_stds"
-            )(outputs)
-        else:
-            log_stds = self.param("log_stds", jax.nn.initializers.constant(-4.6), (self.action_dim,))
-
+    
+        log_stds = nn.Dense(
+            self.action_dim, kernel_init=kernel_init, bias_init=bias_init, name="log_stds"
+        )(outputs)
+    
         log_stds = jnp.clip(log_stds, self.log_std_min, self.log_std_max)
 
         distribution = distrax.MultivariateNormalDiag(
@@ -202,5 +209,6 @@ class Policy(nn.Module):
 class TransformedWithMode(distrax.Transformed):
     def mode(self) -> jnp.ndarray:
         return self.bijector.forward(self.distribution.mode())
+
 
 

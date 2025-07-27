@@ -12,7 +12,6 @@ from jaxrl_m.ppo_plus import SACAgent
 from jaxrl_m.dataset import ReplayBuffer, ActorReplayBuffer
 from jaxrl_m.common import TrainState
 import flax.linen as nn
-from flax.training import train_state
 import optax
 import jax.flatten_util
 import os
@@ -151,7 +150,7 @@ def train_fresh_critic_ppo(
     agent_state: SACAgent,
     seed: int = 42,
     num_training_steps: int = 50_000
-) -> train_state.TrainState:
+) -> TrainState:
     """
     Train a fresh critic from scratch.
     """
@@ -252,12 +251,7 @@ def compute_ppo_actor_gradient(
         
         actor_loss1 = masks * advantages * ratio
         actor_loss2 = masks * advantages * jnp.clip(ratio, 1 - clip_coef, 1 + clip_coef)
-
-        # Apply discounting if configured
-        if agent.config.training.discount_actor:
-            actor_loss = -jnp.minimum(discounts * actor_loss1, discounts * actor_loss2).sum() / (discounts.sum())
-        else:
-            actor_loss = -jnp.minimum(actor_loss1, actor_loss2).mean()
+        actor_loss = -jnp.minimum(actor_loss1, actor_loss2).mean()
             
         return actor_loss
     
@@ -271,7 +265,7 @@ def compute_ppo_actor_gradient(
 
 def compute_advantages_with_critic(
     agent: SACAgent,
-    critic: train_state.TrainState,
+    critic: TrainState,
     observations: jnp.ndarray,
     actions: jnp.ndarray,
     rewards: jnp.ndarray,
@@ -303,7 +297,7 @@ def compute_advantages_with_critic(
     v_values, tmp_logp = jnp.mean(vs, axis=0), jnp.mean(hs, axis=0)
     
     # Compute advantages as Q(s,a) - V(s) with entropy regularization
-    temp_value = temp_agent.temp()
+    temp_value = temp_agent.temp.apply_fn({'params': temp_agent.temp.params})
     advantages = (q_values - temp_value * log_probs) - (v_values - temp_value * tmp_logp)
     
     return advantages.reshape(-1)
@@ -340,8 +334,8 @@ def evaluate_gradient_quality_ppo(
     replay_buffer: ReplayBuffer,
     step_num: int,
     batch_size: int = 256,
-    rollout_steps: int = 50_000,
-    critic_training_steps: int = 5_000,
+    rollout_steps: int = 100_000,
+    critic_training_steps: int = 10_000,
     evaluation_batch_size: int = 5000,
     num_parallel_envs: int = 10
 ) -> Dict[str, float]:

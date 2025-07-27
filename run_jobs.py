@@ -17,10 +17,9 @@ def str2bool(v):
 parser = argparse.ArgumentParser()
 parser.add_argument('--seed',type=int,default=42) 
 parser.add_argument('--env_name',type=str,default="Walker2d-v5")
-parser.add_argument('--project_name',type=str,default="DMC_DOG") 
-
+parser.add_argument('--project_name',type=str,default="AAAI_ERLANGEN") 
 parser.add_argument('--activation_fn',type=str,default="tanh") 
-parser.add_argument('--discount_entropy',type=str2bool,default=False)
+
 
 
 parser.add_argument('--on_policy_data',type=str2bool,default=False) 
@@ -32,22 +31,23 @@ parser.add_argument('--num_critics',type=int,default=2)
 parser.add_argument('--gae_lambda',type=float,default=0.5) 
 
 parser.add_argument('--max_episode_steps',type=int,default=1000)
-parser.add_argument('--clipping_ratio',type=float,default=0.25)
+parser.add_argument('--clipping_ratio',type=float,default=0.2)
 parser.add_argument('--gamma',type=float,default=0.99)
 
 parser.add_argument('--policy_steps',type=int,default=5000) 
-parser.add_argument('--buffer_size',type=int,default=50_000) 
+parser.add_argument('--buffer_size',type=int,default=100_000) 
+parser.add_argument('--spo_loss',type=str2bool,default=False)
 
 args = parser.parse_args()
 
 ##############################
 
 np.random.seed(args.seed)
-seeds = list(np.random.randint(0,1e6,5))
-configs = itertools.product(seeds,["Hopper-v5","Walker2d-v5","HalfCheetah-v5","Ant-v5"],[args.project_name],
+seeds = list(np.random.randint(0,1e6,10))
+configs = itertools.product(seeds,["InvertedPendulum-v5","Hopper-v5","Walker2d-v5","HalfCheetah-v5","Ant-v5","Humanoid-v5"],[args.project_name],
                             [args.gamma],[args.temperature],[args.policy_steps],
-                            [args.num_critics],[args.activation_fn],[args.discount_entropy],[args.gae_lambda],[args.buffer_size],
-                            [args.max_episode_steps],[args.use_layer_norm],[args.bound_actions],[args.on_policy_data],[args.clipping_ratio],[args.min_target])
+                            [args.num_critics],[args.activation_fn],[args.gae_lambda],[args.buffer_size],
+                           [args.use_layer_norm],[args.bound_actions],[args.on_policy_data],[args.clipping_ratio],[args.min_target],[args.spo_loss])
             
 for cfg in configs :
     
@@ -60,9 +60,10 @@ for cfg in configs :
     command = f'sbatch job_file.sh\
     --seed  {cfg[0]} --env_name {cfg[1]} --project_name {cfg[2]} \
     --gamma {cfg[3]} --temperature {cfg[4]} --policy_steps {cfg[5]} \
-    --num_critics {cfg[6]} --activation_fn {cfg[7]} --discount_entropy {cfg[8]} \
-    --gae_lambda {cfg[9]} --buffer_size {cfg[10]} --max_episode_steps {cfg[11]} \
-    --use_layer_norm {cfg[12]} --bound_actions {cfg[13]} --on_policy_data {cfg[14]} --clipping_ratio {cfg[15]} --min_target {cfg[16]}\
+    --num_critics {cfg[6]} --activation_fn {cfg[7]} \
+    --gae_lambda {cfg[8]} --buffer_size {cfg[9]} \
+    --use_layer_norm {cfg[10]} --bound_actions {cfg[11]} --on_policy_data {cfg[12]} \
+    --clipping_ratio {cfg[13]} --min_target {cfg[14]} --spo_loss {cfg[15]} \
     >./null 2>&1 & '
     
     print(command)

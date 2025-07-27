@@ -9,7 +9,7 @@ ml_collections
 --find-links https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
 jax[cuda]
 #envpool
-nvidia-cublas-cu12==12.9.0.13
+#nvidia-cublas-cu12==12.9.0.13
 #torch ## to get rid of
 dm_control
 pandas

@@ -85,10 +85,10 @@ class SACAgent(flax.struct.PyTreeNode):
         
         return agent
 
-    #@partial(jax.jit,static_argnames=("num_updates",))
+
     
     @jax.jit
-    def update_critics_seq(agent,transitions,num_updates=0 ):
+    def update_critics_seq(agent,transitions ):
                 
         n_batches = transitions['observations'].shape[0]//250
 
@@ -112,19 +112,198 @@ class SACAgent(flax.struct.PyTreeNode):
         
         return agent
     
-    @partial(jax.jit,static_argnames=("num_updates",))
-    def update_critics_seq2(agent,transitions,num_updates=2000 ):
-                
-        idxs = jax.random.choice(agent.rng, a=transitions['observations'].shape[0], shape=(num_updates, 250), replace=True)
 
-        batches = jax.vmap(lambda i: jax.tree.map(lambda x: x[i], transitions))(idxs)
-        agent,batches = jax.lax.fori_loop(0,num_updates,body,(agent,batches))
+    
+    @jax.jit
+    def update_actor_seq(agent, batch: Batch):
         
-        return agent
+        def compute_gae(rewards: jnp.ndarray, values: jnp.ndarray, next_values: jnp.ndarray, 
+                        dones: jnp.ndarray, truncations: jnp.ndarray, gamma: float, 
+                        lam: float) -> jnp.ndarray:
+            # Compute deltas (TD residuals)
+            
+            
+            deltas = rewards + gamma * next_values * (1 - dones) - values
+            deltas = deltas * (1 - truncations)
+            
+            # Define a function to update the cumulative advantage in a scan step
+            def update_advantage(cumulative_advantage, delta_and_mask):
+                delta, trunc,done = delta_and_mask
+                # Update advantage using GAE with truncation handling
+                cumulative_advantage = delta + gamma * lam * (1-done) * (1 - trunc) * cumulative_advantage 
+                return cumulative_advantage, cumulative_advantage
+
+            # Use lax.scan to accumulate the advantages in reverse order
+            # Reverse deltas and truncations for the scan (scan works forward, but we want to process backwards)
+            reversed_deltas = deltas[::-1]
+            reversed_truncations = truncations[::-1]
+            reversed_dones = dones[::-1]
+            
+            # Scan will return the final cumulative advantage and the full sequence of advantages
+            _, advantages = lax.scan(update_advantage, 0.0, (reversed_deltas, reversed_truncations,reversed_dones))
+
+            # Reverse the advantages back to the original order
+            advantages = advantages[::-1]
+            advantages = advantages* (1 - truncations)
+
+            return advantages,None
+                
+        
+   
+        def actor_loss_fn(
+                actor_params,
+                adv,
+                batch,
+                idx,
+        ):
+            
+            ### Compute probability of old actions under new policy
+            
+
+            batch = jax.tree.map(lambda x:x[idx],batch)
+            adv = adv[idx]
+            
+            discounts,masks,logp = batch["discounts"],batch["masks"],batch["log_probs"]
+            
+            #jax.debug.print("🤯 HELLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLL{x} 🤯", x=discounts[:100])
+            dist = agent.actor.apply_fn({'params': actor_params}, batch["observations"])
+            pre_actions = batch["pre_actions"]
+            pre_log_probs = dist.log_prob(pre_actions)
+            
+            if agent.config.training.tanh_squash_actions:
+                new_logp = pre_log_probs - jnp.sum(2 * (jnp.log(2) - pre_actions - jax.nn.softplus(-2 * pre_actions)), axis=-1)
+            
+            else : 
+                new_logp = pre_log_probs
+            
+            
+            logratio = new_logp - logp
+            ratio = jnp.exp(logratio)
+
+            # Calculate how much policy is changing
+            approx_kl = ((ratio - 1) - logratio).mean()
+
+            # Policy loss
+            clip_coef = agent.config.ppo.clipping_ratio ##default 0.2 
+            
+            
+            if agent.config.ppo.spo_loss:
+                
+                spo_term1 = masks * adv * ratio
+                spo_term2 = masks * jnp.abs(adv) / (2 * clip_coef) * jnp.square(ratio - 1)
+                actor_loss = -(spo_term1 - spo_term2).mean()
+            
+            
+            else : 
+
+                actor_loss1 = masks*adv * ratio
+                actor_loss2 = masks*adv * jnp.clip(ratio, 1 - clip_coef, 1 + clip_coef)
+                actor_loss = -jnp.minimum(actor_loss1,actor_loss2).mean()
+                    
+            ### Pad Q and logits because actor buffer is padded ###
+            logp = masks * new_logp
+            
+            # Use simple entropy calculation (removed discount_entropy logic)
+            entropy = -1 * (masks*logp).sum()/(masks.sum())
+            
+            return actor_loss, {
+                'actor_loss': actor_loss,
+                'entropy': entropy,
+                'approx_kl':approx_kl
+            }
+            
+        
+        def temp_loss_fn(temp_params, entropy, target_entropy):
+            temperature = agent.temp.apply_fn({'params': temp_params})
+            temp_loss = (temperature * (entropy - target_entropy)).mean()
+
+            ### Clip temperature to minimum value
+            temp_loss = jax.lax.cond(
+                        jnp.logical_and(temperature < 0.001, temp_loss > 0),
+                        lambda _: 0.0,
+                        lambda _: temp_loss,
+                        operand=None
+                        )
+            
+            return temp_loss, {
+                'temp_loss': temp_loss,
+                'temperature': temperature,
+            }
+            
+
+        new_rng, curr_key, next_key = jax.random.split(agent.rng, 3)
+
+        observations,next_observations = batch["observations"],batch["next_observations"]
+        
+        observations = jnp.concatenate([observations, next_observations[-1][None]], axis=0)
+        
+        def evaluate(observations,key):
+            
+            actions, log_p,_ = agent.sample_actions(observations,seed=key)
+            q_all = agent.critic.apply_fn({'params': agent.critic.params}, observations, actions)
+            v = jnp.mean(q_all,axis=0)
+            
+            return v,log_p
+        
+        if agent.config.ppo.gae_lambda > 0.:
+        
+            vs,hs = jax.vmap(evaluate,in_axes=(None,0))(observations,jax.random.split(curr_key,10))
+            
+            tmp_v,tmp_logp = jnp.mean(vs,axis=0),jnp.mean(hs,axis=0)
+            tmp_v -= agent.temp.apply_fn({'params': agent.temp.params})*tmp_logp
+            v,next_v= tmp_v[:-1],tmp_v[1:]
+            
+            rewards = batch["rewards"]-agent.temp.apply_fn({'params': agent.temp.params})*batch["log_probs"]
+            dones = jnp.bool(1-batch["masks"])
+            truncations = jnp.bool(batch["truncateds"])
+            
+            adv,_ = compute_gae(rewards.squeeze(),v.squeeze(),next_v.squeeze(),dones.squeeze(),truncations.squeeze(),
+                                gamma=agent.config.training.discount,lam=agent.config.ppo.gae_lambda)
+            adv = adv.reshape(-1)
+
+        else :   
+
+            ### Compute advantage for the fixed states AND actions
+            vs,hs = jax.vmap(evaluate,in_axes=(None,0))(batch["observations"],jax.random.split(curr_key,10))        
+            tmp_v,tmp_logp = jnp.mean(vs,axis=0),jnp.mean(hs,axis=0)
+            q = agent.critic.apply_fn({'params': agent.critic.params}, batch["observations"], batch["actions"]).mean(axis=0)
+            adv = (q-agent.temp.apply_fn({'params': agent.temp.params})*batch["log_probs"]) - (tmp_v - agent.temp.apply_fn({'params': agent.temp.params}) *tmp_logp)### This one worked
+            adv = adv.reshape(-1)
+            
+        
+        if agent.config.ppo.store_grads:
+            idx = jnp.arange(adv.shape[0])
+            grads,info = jax.grad(actor_loss_fn,has_aux=True)(agent.actor.params,adv,batch,idx)
+    
+        indexes = jnp.arange(adv.shape[0])
+        indexes = jax.random.permutation(new_rng, indexes)
+        batch_size = 250
+        num_actor_updates = adv.shape[0] // batch_size
+        index_batches = jnp.split(indexes[:batch_size * num_actor_updates], num_actor_updates)
+        
+        for idx in index_batches:
+            
+            # Always use minibatch (removed minibatch config check)
+            
+            actor_grads, actor_info = jax.grad(actor_loss_fn, has_aux=True)(agent.actor.params, adv, batch, idx)
+            new_actor = agent.actor.apply_gradients(grads=actor_grads)
+            
+            temp_grads, temp_info = jax.grad(temp_loss_fn, has_aux=True)(agent.temp.params, actor_info['entropy'], agent.config.ppo.target_entropy)
+            new_temp = agent.temp.apply_gradients(grads=temp_grads)
+            
+
+            agent = agent.replace(rng=new_rng, actor=new_actor,temp=new_temp)
+
+        info = {**actor_info, **temp_info}  
+        if agent.config.ppo.store_grads:
+                        info['grads'] = grads
+            
+        return agent,info
+                    
 
     
     #@jax.jit
-    def update_actor(agent, batch: Batch):
+    def update_actor_old(agent, batch: Batch):
         
       
         def compute_gae(rewards: jnp.ndarray, values: jnp.ndarray, next_values: jnp.ndarray, 
@@ -392,6 +571,7 @@ class PPOConfig:
     temperature: float = 1.0
     store_grads: bool = False
     target_entropy: Optional[float] = None
+    spo_loss: bool = False
 
 @dataclass
 class TrainingConfig:
@@ -431,6 +611,7 @@ class SuperPPOConfig:
                 gae_lambda=args.gae_lambda,
                 entropy_coeff=args.entropy_coeff,
                 temperature=args.temperature,
+                spo_loss=args.spo_loss,
             ),
             training=TrainingConfig(
                 seed=args.seed,

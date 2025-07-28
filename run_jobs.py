@@ -17,10 +17,8 @@ def str2bool(v):
 parser = argparse.ArgumentParser()
 parser.add_argument('--seed',type=int,default=42) 
 parser.add_argument('--env_name',type=str,default="Walker2d-v5")
-parser.add_argument('--project_name',type=str,default="AAAI_ERLANGEN") 
+parser.add_argument('--project_name',type=str,default="AAAI_ABLATIONS") 
 parser.add_argument('--activation_fn',type=str,default="tanh") 
-
-
 
 parser.add_argument('--on_policy_data',type=str2bool,default=False) 
 parser.add_argument('--min_target',type=str2bool,default=False) 
@@ -31,12 +29,13 @@ parser.add_argument('--num_critics',type=int,default=2)
 parser.add_argument('--gae_lambda',type=float,default=0.5) 
 
 parser.add_argument('--max_episode_steps',type=int,default=1000)
-parser.add_argument('--clipping_ratio',type=float,default=0.2)
+parser.add_argument('--clipping_ratio',type=float,default=0.25)
 parser.add_argument('--gamma',type=float,default=0.99)
 
 parser.add_argument('--policy_steps',type=int,default=5000) 
-parser.add_argument('--buffer_size',type=int,default=100_000) 
+parser.add_argument('--buffer_size',type=int,default=50_000) 
 parser.add_argument('--spo_loss',type=str2bool,default=False)
+parser.add_argument('--entropy_coeff',type=float,default=0.5)
 
 args = parser.parse_args()
 
@@ -44,10 +43,10 @@ args = parser.parse_args()
 
 np.random.seed(args.seed)
 seeds = list(np.random.randint(0,1e6,10))
-configs = itertools.product(seeds,["InvertedPendulum-v5","Hopper-v5","Walker2d-v5","HalfCheetah-v5","Ant-v5","Humanoid-v5"],[args.project_name],
+configs = itertools.product(seeds,["InvertedDoublePendulum-v5","Hopper-v5","Walker2d-v5","HalfCheetah-v5","Ant-v5","Humanoid-v5"],[args.project_name],
                             [args.gamma],[args.temperature],[args.policy_steps],
                             [args.num_critics],[args.activation_fn],[args.gae_lambda],[args.buffer_size],
-                           [args.use_layer_norm],[args.bound_actions],[args.on_policy_data],[args.clipping_ratio],[args.min_target],[args.spo_loss])
+                            [args.use_layer_norm],[args.bound_actions],[args.on_policy_data],[args.clipping_ratio],[args.min_target],[args.spo_loss],[args.entropy_coeff])
             
 for cfg in configs :
     
@@ -64,6 +63,7 @@ for cfg in configs :
     --gae_lambda {cfg[8]} --buffer_size {cfg[9]} \
     --use_layer_norm {cfg[10]} --bound_actions {cfg[11]} --on_policy_data {cfg[12]} \
     --clipping_ratio {cfg[13]} --min_target {cfg[14]} --spo_loss {cfg[15]} \
+    --entropy_coeff {cfg[16]} \
     >./null 2>&1 & '
     
     print(command)

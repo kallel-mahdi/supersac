@@ -10,7 +10,6 @@ import jax.numpy as jnp
 import os
 
 
-import gymnasium as gym
 import jax
 import numpy as np
 import tqdm
@@ -24,9 +23,8 @@ from jaxrl_m.wandb import setup_wandb
 from jaxrl_m.ppo_plus import SuperPPOConfig, create_learner
 from jaxrl_m.utils import *
 from jaxrl_m.normalize import *
-from cosine_distance_ppo import evaluate_gradient_quality_ppo
+from cosine_distance_ppo import create_experimental_agents, evaluate_experimental_agents_gradients, compute_cosines
 import random
-from dm_control import suite
 
 
 
@@ -45,16 +43,16 @@ parser.add_argument('--seed',type=int,default=42)
 
 parser.add_argument('--algo_name', type=str, default='superppo', help='the name of the RL algorithm')
 parser.add_argument('--project_name',type=str,default="single_exp_off") 
-parser.add_argument('--env_name',type=str,default="Walker2d-v5") 
+parser.add_argument('--env_name',type=str,default="Ant-v5") 
 parser.add_argument('--evaluate_grad',type=bool,default=True)
 
-parser.add_argument('--max_steps',type=int,default=1_000_000) 
+parser.add_argument('--max_steps',type=int,default=1_100_000) 
 parser.add_argument('--gamma',type=float,default=0.99)
-parser.add_argument('--entropy_coeff',type=float,default=0.5) 
+parser.add_argument('--entropy_coeff',type=float,default=1.) 
 
 parser.add_argument('--num_critics',type=int,default=2)
 parser.add_argument('--hidden_dims',type=int,default=256) 
-parser.add_argument('--temperature',type=float,default=1.) 
+parser.add_argument('--temperature',type=float,default=0.) 
 
 
 parser.add_argument('--on_policy_data',type=str2bool,default=False)
@@ -62,7 +60,7 @@ parser.add_argument('--min_target',type=str2bool,default=False)
 parser.add_argument('--use_layer_norm',type=str2bool,default=True)
 parser.add_argument('--spo_loss',type=str2bool,default=False)
 
-parser.add_argument('--clipping_ratio',type=float,default=0.25) 
+parser.add_argument('--clipping_ratio',type=float,default=0.2) 
 parser.add_argument('--gae_lambda',type=float,default=0.5) 
 
 parser.add_argument('--buffer_size',type=int,default=50_000) 
@@ -99,7 +97,7 @@ def train(args):
     
     # Create environments using the utility function
     env, eval_env = create_environments(args.env_name)
-    max_steps = get_max_steps_for_env(args.env_name)
+    max_steps = args.max_steps
     if args.on_policy_data: 
         args.buffer_size = args.policy_steps
     
@@ -121,7 +119,7 @@ def train(args):
 
     replay_buffer = ReplayBuffer.create(example_transition, size=int(args.buffer_size))
     actor_buffer = ActorReplayBuffer.create(example_transition, size=args.policy_steps)
-    #actor_buffer = ActorReplayBuffer.create(example_transition, size=int(args.buffer_size))
+    reference_buffer = ReplayBuffer.create(example_transition, size=int(args.buffer_size))
 
     # Create configuration from command line arguments
     config = SuperPPOConfig.from_args(args)
@@ -132,6 +130,14 @@ def train(args):
         observations=example_transition['observations'][None],
         actions=example_transition['actions'][None]
     )
+    
+    experimental_agents = create_experimental_agents(config, example_transition)
+    
+ 
+
+
+    
+    
 
     exploration_metrics = dict()
     exploration_rng = jax.random.PRNGKey(0)
@@ -169,18 +175,36 @@ def train(args):
                     critic_update_info = {}
                     
                 
-                # if i % 50_000 == 0 and args.evaluate_grad:
-                #     gradient_quality_results = evaluate_gradient_quality_ppo(
-                #         agent=agent,
-                #         env=env,
-                #         replay_buffer=replay_buffer,
-                #         step_num=i,
-                #         rollout_steps=100_000,
-                #         critic_training_steps=10_000,
-                #         evaluation_batch_size=2_000,
-                #         num_parallel_envs=6
-                #     )
-                #     print(f"Gradient quality evaluation completed: {gradient_quality_results}")
+                if i % 50_000 == 0 and args.evaluate_grad:
+                    reference_buffer,_,_,_,_ = rollout_policy(agent,env,exploration_rng,
+                                                            discount = args.gamma,max_steps=50_000,
+                                                            replay_buffer=reference_buffer,actor_buffer=None,eval=False)
+                    
+                    # For every agent in experimental_agents, change their actor to agent.actor
+                    for agent_name in experimental_agents.keys():
+                        experimental_agents[agent_name] = experimental_agents[agent_name].replace(actor=agent.actor)
+                    
+                    experimental_agents,agent_gradients = evaluate_experimental_agents_gradients(experimental_agents,actor_buffer,replay_buffer,reference_buffer,i)
+                    results = compute_cosines(agent_gradients)
+                    wandb.log(results, step=i)
+                    print("RESUUUUUUUUUULTS",results)
+    
+                
+                # Evaluate experimental agents gradients  
+                if i % 50_000 == 0:  # Evaluate every 50k steps
+                    exp_results = evaluate_experimental_agents_gradients(
+                        experimental_agents=experimental_agents,
+                        actor_buffer=actor_buffer,
+                        replay_buffer=replay_buffer,
+                        reference_buffer=reference_buffer,
+                        step_num=i,
+                        critic_training_steps=5000,  # Adjust as needed
+                        evaluation_batch_size=3000   # Adjust as needed
+                    )
+                
+                
+                    
+                    
                 
                 for _ in range(args.num_epochs):
                     agent,actor_update_info = agent.update_actor_seq(actor_transitions)

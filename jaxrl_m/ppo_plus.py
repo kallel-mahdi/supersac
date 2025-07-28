@@ -19,7 +19,6 @@ from functools import partial
 def get_batch(i,batches):
     return  jax.tree.map(lambda x: x[i], batches)
 
-
 def body(i,val):
     agent,batches = val
     return (agent.update_critics(get_batch(i,batches)),batches)
@@ -87,25 +86,23 @@ class SACAgent(flax.struct.PyTreeNode):
 
 
     
-    @jax.jit
-    def update_critics_seq(agent,transitions ):
+    @partial(jax.jit,static_argnames=('n_updates',))
+    def update_critics_seq(agent,transitions,n_updates=None ):
                 
-        n_batches = transitions['observations'].shape[0]//250
-
-        indexes = jnp.arange(transitions['observations'].shape[0])
-        indexes = jax.random.permutation(agent.rng, indexes)
-        batch_size = indexes.shape[0] // n_batches
-        idxs = indexes[:batch_size * n_batches].reshape((n_batches, batch_size))
-
-        ### Make sure we're doing at least 100 updates per epoch
-        ### This is to maintain some fairness between the off-policy and on-policy critics
-
-        #if n_batches <100 or num_updates is not None:
-
-        if n_batches < 100:
-            #n_batches = jnp.maximum(100,num_updates)
-            n_batches = 100
-            idxs = jax.random.choice(agent.rng, a=transitions['observations'].shape[0], shape=(n_batches, 250), replace=True)
+        batch_size = 250
+        n_batches = transitions['observations'].shape[0]//batch_size
+        if n_batches < 100: n_updates = 100
+        
+        if n_updates:
+            
+            ### Batches will be sampled randomly with replacement
+            idxs = jax.random.choice(agent.rng, a=transitions['observations'].shape[0], shape=(n_updates, 250), replace=True)
+            
+        else:
+            ### Go through all the transitions without replacement
+            indexes = jnp.arange(transitions['observations'].shape[0])
+            indexes = jax.random.permutation(agent.rng, indexes)
+            idxs = indexes[:batch_size * n_batches].reshape((n_batches, batch_size))
 
         batches = jax.vmap(lambda i: jax.tree.map(lambda x: x[i], transitions))(idxs)
         agent,batches = jax.lax.fori_loop(0,n_batches,body,(agent,batches))
@@ -163,9 +160,7 @@ class SACAgent(flax.struct.PyTreeNode):
             batch = jax.tree.map(lambda x:x[idx],batch)
             adv = adv[idx]
             
-            discounts,masks,logp = batch["discounts"],batch["masks"],batch["log_probs"]
-            
-            #jax.debug.print("🤯 HELLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLL{x} 🤯", x=discounts[:100])
+            masks,logp = batch["masks"],batch["log_probs"]
             dist = agent.actor.apply_fn({'params': actor_params}, batch["observations"])
             pre_actions = batch["pre_actions"]
             pre_log_probs = dist.log_prob(pre_actions)
@@ -217,7 +212,7 @@ class SACAgent(flax.struct.PyTreeNode):
             temperature = agent.temp.apply_fn({'params': temp_params})
             temp_loss = (temperature * (entropy - target_entropy)).mean()
 
-            ### Clip temperature to minimum value
+            ### Clip temperature to minimum value to avoid stability issues
             temp_loss = jax.lax.cond(
                         jnp.logical_and(temperature < 0.001, temp_loss > 0),
                         lambda _: 0.0,

@@ -17,7 +17,7 @@ def str2bool(v):
 parser = argparse.ArgumentParser()
 parser.add_argument('--seed',type=int,default=42) 
 parser.add_argument('--env_name',type=str,default="Walker2d-v5")
-parser.add_argument('--project_name',type=str,default="AAAI_ABLATIONS") 
+parser.add_argument('--project_name',type=str,default="AAAI_ABLATIONS_5000") 
 parser.add_argument('--activation_fn',type=str,default="tanh") 
 
 parser.add_argument('--on_policy_data',type=str2bool,default=False) 
@@ -56,7 +56,7 @@ for cfg in configs :
     # Add random time pause
     # time.sleep(random.uniform(0.1,3))
 
-    command = f'sbatch job_file.sh\
+    command = f'sbatch job_file_julia.sh\
     --seed  {cfg[0]} --env_name {cfg[1]} --project_name {cfg[2]} \
     --gamma {cfg[3]} --temperature {cfg[4]} --policy_steps {cfg[5]} \
     --num_critics {cfg[6]} --activation_fn {cfg[7]} \

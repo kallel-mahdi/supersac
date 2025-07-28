@@ -24,7 +24,6 @@ from jaxrl_m.wandb import setup_wandb
 from jaxrl_m.ppo_plus import SuperPPOConfig, create_learner
 from jaxrl_m.utils import *
 from jaxrl_m.normalize import *
-from cosine_distance_ppo import evaluate_gradient_quality_ppo
 import random
 from dm_control import suite
 
@@ -72,6 +71,7 @@ parser.add_argument('--num_critic_updates',type=int,default=5000)
 parser.add_argument('--activation_fn',type=str,default='tanh')
 parser.add_argument('--stable_scheme',type=str2bool,default=True)
 parser.add_argument('--bound_actions',type=str2bool,default=True)
+parser.add_argument('--intertwine_updates',type=str2bool,default=False)
 
 args = parser.parse_args()
 print(args)
@@ -162,30 +162,27 @@ def train(args):
                 
                 critic_transitions = replay_buffer.get_all()
                 actor_transitions = actor_buffer.get_all()
-                
-                for _ in range(args.num_epochs):
+             
                     
-                    agent = agent.update_critics_seq(critic_transitions)
+                    
+                
+                if args.intertwine_updates:
+                    # Intertwined updates: alternate between critic and actor
                     critic_update_info = {}
+                    actor_update_info = {}
                     
-                
-                # if i % 50_000 == 0 and args.evaluate_grad:
-                #     gradient_quality_results = evaluate_gradient_quality_ppo(
-                #         agent=agent,
-                #         env=env,
-                #         replay_buffer=replay_buffer,
-                #         step_num=i,
-                #         rollout_steps=100_000,
-                #         critic_training_steps=10_000,
-                #         evaluation_batch_size=2_000,
-                #         num_parallel_envs=6
-                #     )
-                #     print(f"Gradient quality evaluation completed: {gradient_quality_results}")
-                
-                for _ in range(args.num_epochs):
-                    agent,actor_update_info = agent.update_actor_seq(actor_transitions)
-                
-                
+                    for _ in range(args.num_epochs):
+                        agent = agent.update_critics_seq(critic_transitions)
+                        agent, actor_update_info = agent.update_actor_seq(actor_transitions)
+                else:
+                    # Separate epochs: first all critic updates, then all actor updates
+                    for _ in range(args.num_epochs):
+                        agent = agent.update_critics_seq(critic_transitions)
+                        critic_update_info = {}
+                    
+                    for _ in range(args.num_epochs):
+                        agent, actor_update_info = agent.update_actor_seq(actor_transitions)
+
                 update_info = {**critic_update_info, **actor_update_info}
                
                 

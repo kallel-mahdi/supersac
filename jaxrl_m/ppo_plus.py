@@ -214,7 +214,7 @@ class SACAgent(flax.struct.PyTreeNode):
 
             ### Clip temperature to minimum value to avoid stability issues
             temp_loss = jax.lax.cond(
-                        jnp.logical_and(temperature < 0.001, temp_loss > 0),
+                        jnp.logical_and(temperature <= 0.001, temp_loss > 0),
                         lambda _: 0.0,
                         lambda _: temp_loss,
                         operand=None

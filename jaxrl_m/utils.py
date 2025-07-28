@@ -72,6 +72,6 @@ def get_max_steps_for_env(env_name):
     if env_name in ["Humanoid-v5", "HumanoidStandup-v5", "walk", "stand", "trot", "run"]:
         return 5_000_000
     elif env_name == "InvertedDoublePendulum-v5":
-        return 500_000
+        return 200_000
     else:
         return 1_000_000  # default

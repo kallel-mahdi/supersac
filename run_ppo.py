@@ -103,7 +103,7 @@ args.batch_size = int(args.num_envs * args.num_steps)
 args.minibatch_size = int(args.batch_size // args.num_minibatches)
 args.num_iterations = args.max_steps // args.batch_size
 
-if args.env_name in ["walk","stand","trot","run","Humanoid-v5"]: args.max_steps = 5_000_000
+
 
 args = parser.parse_args()
 

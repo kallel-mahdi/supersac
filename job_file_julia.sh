@@ -13,7 +13,7 @@
 # export: "NONE"               # From --export=NONE
 
 #SBATCH -J StandardJob           # Name your job
-#SBATCH --time=04:00:00          # Time limit in the form hh:mm:ss
+#SBATCH --time=08:00:00          # Time limit in the form hh:mm:ss
 #SBATCH -c 8                     # We want to use 8 cores
 #SBATCH --mem=8G                 # Job needs 8GB of memory
 #SBATCH -p standard              # Select standard partition

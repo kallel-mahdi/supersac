@@ -172,6 +172,52 @@ def cosine_similarity(grad1: jnp.ndarray, grad2: jnp.ndarray) -> float:
     return float(jnp.dot(grad1, grad2) / (norm1 * norm2) if min(norm1, norm2) > 1e-8 else 0.0)
 
 
+def compute_q_values_on_data(agent: SACAgent, batch_data: BatchData) -> jnp.ndarray:
+    """Compute Q-values for an agent on given batch data."""
+    q_values = agent.critic.apply_fn(
+        {'params': agent.critic.params}, 
+        batch_data.observations, 
+        batch_data.actions
+    ).mean(axis=0)  # Average over ensemble if multiple critics
+    return q_values
+
+
+def compute_q_bias_metrics(
+    agent_q_values: Dict[str, jnp.ndarray],
+    reference_q_values: jnp.ndarray
+) -> Dict[str, float]:
+    """
+    Compute Q-function bias metrics using reference as ground truth.
+    
+    Args:
+        agent_q_values: Dictionary mapping agent names to their Q-values
+        reference_q_values: Reference Q-values (ground truth)
+        
+    Returns:
+        Dictionary containing bias metrics for each agent
+    """
+    bias_metrics = {}
+    
+    for agent_name, q_values in agent_q_values.items():
+        if agent_name == 'reference':
+            continue  # Skip reference vs reference
+            
+        bias = q_values - reference_q_values
+        
+        # Compute various bias metrics
+        mean_bias = float(jnp.mean(bias))
+        absolute_bias = float(jnp.mean(jnp.abs(bias)))
+        relative_bias = float(jnp.mean(bias / (jnp.abs(reference_q_values) + 1e-8)))
+        rmse = float(jnp.sqrt(jnp.mean(bias ** 2)))
+        
+        bias_metrics[f"train/q_mean_bias_{agent_name}"] = mean_bias
+        bias_metrics[f"train/q_absolute_bias_{agent_name}"] = absolute_bias
+        bias_metrics[f"train/q_relative_bias_{agent_name}"] = relative_bias
+        bias_metrics[f"train/q_rmse_{agent_name}"] = rmse
+    
+    return bias_metrics
+
+
 def evaluate_experimental_agents_gradients(
     experimental_agents: Dict[str, SACAgent],
     actor_buffer,  # ActorReplayBuffer 
@@ -260,7 +306,19 @@ def evaluate_experimental_agents_gradients(
         agent_gradients[agent_name] = compute_ppo_actor_gradient(updated_agent, gradient_data, advantages)
         experimental_agents[agent_name] = updated_agent
     
-    return experimental_agents, agent_gradients
+    # Compute Q-values for bias analysis
+    print(f"\nComputing Q-values for bias analysis on actor_data ({actor_data.observations.shape[0]} samples)")
+    agent_q_values = {}
+    for agent_name, agent in experimental_agents.items():
+        print(f"Computing Q-values for {agent_name}")
+        agent_q_values[agent_name] = compute_q_values_on_data(agent, actor_data)
+    
+    
+    gradient_metrics = compute_cosines(agent_gradients)
+    # Compute bias metrics using reference as ground truth
+    bias_metrics = compute_q_bias_metrics(agent_q_values, agent_q_values['reference'])
+    
+    return experimental_agents, gradient_metrics, bias_metrics
 
 
 def compute_cosines(agent_gradients: Dict[str, jnp.ndarray]) -> Dict[str, float]:

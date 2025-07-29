@@ -40,15 +40,6 @@ def tanh_layer_init(std: float = jnp.sqrt(2.0), bias_const: float = 0.0):
     return kernel_init, bias_init
 
 
-def relu_layer_init(std: float = jnp.sqrt(2.0), bias_const: float = 0.0):
-    """
-    Returns (kernel_init, bias_init) for relu-activated layers.
-    """
-    # Sussillo et al. (2014) recommend std ~ sqrt(2) for relu
-    kernel_init = nn.initializers.orthogonal(std)
-    bias_init = nn.initializers.constant(bias_const)
-    return kernel_init, bias_init
-
 
 class MLP(nn.Module):
     

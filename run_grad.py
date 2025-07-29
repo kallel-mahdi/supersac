@@ -54,13 +54,12 @@ parser.add_argument('--num_critics',type=int,default=2)
 parser.add_argument('--hidden_dims',type=int,default=256) 
 parser.add_argument('--temperature',type=float,default=0.) 
 
-
 parser.add_argument('--on_policy_data',type=str2bool,default=False)
 parser.add_argument('--min_target',type=str2bool,default=False)
 parser.add_argument('--use_layer_norm',type=str2bool,default=True)
 parser.add_argument('--spo_loss',type=str2bool,default=False)
 
-parser.add_argument('--clipping_ratio',type=float,default=0.2) 
+parser.add_argument('--clipping_ratio',type=float,default=0.25) 
 parser.add_argument('--gae_lambda',type=float,default=0.5) 
 
 parser.add_argument('--buffer_size',type=int,default=50_000) 
@@ -175,7 +174,7 @@ def train(args):
                     critic_update_info = {}
                     
                 
-                if i % 50_000 == 0 and args.evaluate_grad:
+                if i % 5_000 == 0 and args.evaluate_grad:
                     reference_buffer,_,_,_,_ = rollout_policy(agent,env,exploration_rng,
                                                             discount = args.gamma,max_steps=50_000,
                                                             replay_buffer=reference_buffer,actor_buffer=None,eval=False)
@@ -184,10 +183,12 @@ def train(args):
                     for agent_name in experimental_agents.keys():
                         experimental_agents[agent_name] = experimental_agents[agent_name].replace(actor=agent.actor)
                     
-                    experimental_agents,agent_gradients = evaluate_experimental_agents_gradients(experimental_agents,actor_buffer,replay_buffer,reference_buffer,i)
-                    results = compute_cosines(agent_gradients)
-                    wandb.log(results, step=i)
-                    print("RESUUUUUUUUUULTS",results)
+                    experimental_agents,gradient_results,bias_results = evaluate_experimental_agents_gradients(experimental_agents,actor_buffer,replay_buffer,reference_buffer,i)
+                    
+                    wandb.log(gradient_results, step=i)
+                    wandb.log(bias_results, step=i)
+                    #print("RESUUUUUUUUUULTS",gradient_results)
+                    #print("RESUUUUUUUUUULTS",bias_results)
     
                 
                 # Evaluate experimental agents gradients  

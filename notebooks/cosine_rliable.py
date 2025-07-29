@@ -7,7 +7,7 @@ from collections import defaultdict
 
 # --- Configuration (Copied from your script) ---
 ENTITY = "mahdikallel"
-PROJECT = "AAAI_GRAD_2000"
+PROJECT = "AAAI_GRAD_110K"
 PROJECT_PATH = f"{ENTITY}/{PROJECT}"
 
 CONFIGS = {

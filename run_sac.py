@@ -23,8 +23,8 @@ import gymnasium as gym
 from jaxrl_m.wandb import setup_wandb, default_wandb_config, get_flag_dict
 from jaxrl_m.evaluation import supply_rng, evaluate, flatten, EpisodeMonitor
 from jaxrl_m.dataset import ReplayBuffer
-from jaxrl_m.rollout import rollout_policy2,rollout_policy
-from jaxrl_m.dmc import DMCGym
+from jaxrl_m.rollout import rollout_policy
+from jaxrl_m.utils import *
 
 import wandb
 import random
@@ -45,10 +45,11 @@ parser.add_argument('--project_name', type=str, default='sac_benchmark2', help='
 parser.add_argument('--env_name', type=str, default='Walker2d-v5', help='Name of the gym environment to use')
 parser.add_argument('--gamma', type=float, default=0.99, help='Discount factor')
 parser.add_argument('--algo_name', type=str, default="sac")
-parser.add_argument('--max_steps', type=int, default=1000000, help='Number of training steps')
+parser.add_argument('--entropy_coeff',type=float,default=0.5)   
+parser.add_argument('--buffer_size',type=int,default=1_000_000)
+parser.add_argument('--max_steps',type=int,default=None)
 
 args = parser.parse_args()
-if args.env_name in ["Humanoid-v5","walk","stand","trot","run"] : args.max_steps = 5000000 
 random.seed(args.seed)
 np.random.seed(args.seed)
 
@@ -202,8 +203,7 @@ def create_learner(
         temp = TrainState.create(temp_def, temp_params, tx=optax.adam(learning_rate=temp_lr))
 
         if target_entropy is None:
-            #target_entropy = -0.5 * action_dim
-            target_entropy = - action_dim
+            target_entropy = - args.entropy_coeff * action_dim
 
         config = flax.core.FrozenDict(dict(
             discount=discount,
@@ -222,7 +222,7 @@ def train():
     seed=args.seed
     eval_episodes=10
     batch_size = 256
-    max_steps = args.max_steps
+    
     start_steps = int(1e4)                     
     log_interval = 20000
     eval_interval = 10000
@@ -235,13 +235,10 @@ def train():
         }
     wandb_run = setup_wandb(**wandb_config)
 
-
-    env = EpisodeMonitor(gym.make(args.env_name))
-    eval_env = EpisodeMonitor(gym.make(args.env_name))
+    env, eval_env = create_environments(args.env_name)
     
-    if args.env_name in ["walk","stand","trot","run"]:
-        env = DMCGym("dog",args.env_name)
-        eval_env = DMCGym("dog",args.env_name)
+    max_steps = get_max_steps_for_env(args.env_name) if args.max_steps is None else args.max_steps
+   
 
     example_transition = dict(
         observations=env.observation_space.sample(),
@@ -251,8 +248,8 @@ def train():
         next_observations=env.observation_space.sample(),
     )
 
-    replay_buffer = ReplayBuffer.create(example_transition, size=int(1e6))
-    placeholder = ReplayBuffer.create(example_transition, size=int(1e6))
+    replay_buffer = ReplayBuffer.create(example_transition, size=int(args.buffer_size))
+    placeholder = ReplayBuffer.create(example_transition, size=int(args.buffer_size))
 
     agent = create_learner(args.seed,
                     example_transition['observations'][None],
@@ -299,8 +296,8 @@ def train():
 
         batch = replay_buffer.sample(batch_size)  
         
-        with jax.log_compiles(True):
-            agent, update_info = agent.update(batch)
+        
+        agent, update_info = agent.update(batch)
 
         if i % log_interval == 0:
             train_metrics = {f'training/{k}': v for k, v in update_info.items()}
@@ -317,8 +314,8 @@ def train():
             
             _,_,policy_return,undisc_policy_return,num_steps = rollout_policy(
                                                             agent,eval_env,exploration_rng,
-                                                            None,None,eval=True,
-                                                            discount = agent.config["discount"],max_rollouts=10)
+                                                            discount = agent.config["discount"],max_rollouts=10,
+                                                            replay_buffer=None,actor_buffer=None,eval=True)
             eval_metrics = {"policy_return": policy_return,"undisc_policy_return": undisc_policy_return}
             print(eval_metrics)
             

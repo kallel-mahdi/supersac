@@ -31,7 +31,7 @@ import jax.numpy as jnp
 
 # Cleaner layer initializer similar to PyTorch's layer_init
 
-def tanh_layer_init(std: float = jnp.sqrt(2.0), bias_const: float = 0.0):
+def layer_init(std: float = jnp.sqrt(2.0), bias_const: float = 0.0):
     """
     Returns (kernel_init, bias_init) for tanh-activated layers.
     """
@@ -53,7 +53,7 @@ class MLP(nn.Module):
     def __call__(self, x: jnp.ndarray, train=False) -> jnp.ndarray:
         for i, size in enumerate(self.hidden_dims):
             
-            kernel_init, bias_init = tanh_layer_init() if self.activations == nn.tanh else relu_layer_init()
+            kernel_init, bias_init = layer_init()  
 
             x = nn.Dense(size, kernel_init=kernel_init, bias_init=bias_init)(x)
 
@@ -99,7 +99,7 @@ class OriginalCritic(nn.Module):
         
         self.sow('intermediates', 'features', intermediate)
 
-        kernel_init, bias_init = tanh_layer_init() if self.activations == nn.tanh else relu_layer_init()
+        kernel_init, bias_init = layer_init() 
         Q = nn.Dense(1, kernel_init=kernel_init, bias_init=bias_init)(intermediate)
         
         return jnp.squeeze(Q, -1)
@@ -119,7 +119,7 @@ class OriginalV(nn.Module):
         
         self.sow('intermediates', 'features', intermediate)
 
-        kernel_init, bias_init = tanh_layer_init() if self.activations == nn.tanh else relu_layer_init()
+        kernel_init, bias_init = layer_init() 
         Q = nn.Dense(1, kernel_init=kernel_init, bias_init=bias_init)(intermediate)
         
         return jnp.squeeze(Q, -1)
@@ -174,7 +174,7 @@ class Policy(nn.Module):
         )(observations)
 
         # For the final layer, use the specified scale
-        kernel_init, bias_init = tanh_layer_init(self.final_fc_init_scale) if self.activations == nn.tanh else relu_layer_init(self.final_fc_init_scale)
+        kernel_init, bias_init = layer_init(self.final_fc_init_scale) 
 
         means = nn.Dense(
             self.action_dim, kernel_init=kernel_init, bias_init=bias_init, name="means"

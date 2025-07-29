@@ -47,7 +47,7 @@ parser.add_argument('--project_name',type=str,default="single_exp_off")
 parser.add_argument('--env_name',type=str,default="Walker2d-v5") 
 parser.add_argument('--evaluate_grad',type=bool,default=True)
 
-parser.add_argument('--max_steps',type=int,default=1_000_000) 
+parser.add_argument('--max_steps',type=int,default=None) 
 parser.add_argument('--gamma',type=float,default=0.99)
 parser.add_argument('--entropy_coeff',type=float,default=0.5) 
 
@@ -99,7 +99,7 @@ def train(args):
     
     # Create environments using the utility function
     env, eval_env = create_environments(args.env_name)
-    max_steps = get_max_steps_for_env(args.env_name)
+    max_steps = get_max_steps_for_env(args.env_name) if args.max_steps is None else args.max_steps
     if args.on_policy_data: 
         args.buffer_size = args.policy_steps
     

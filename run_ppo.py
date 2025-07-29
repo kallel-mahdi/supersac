@@ -9,19 +9,14 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.optim as optim
-#import tyro
 from torch.distributions.normal import Normal
-#from torch.utils.tensorboard import SummaryWriter
 from jaxrl_m.wandb import setup_wandb
 from jaxrl_m.rollout import *
 import os
 import argparse
-#import envpool
 import wandb
-import numpy as jnp
 from collections import deque
-import copy
-from jaxrl_m.dmc import DMCGym
+from jaxrl_m.utils import *
 
 os.environ["WANDB_API_KEY"]="28996bd59f1ba2c5a8c3f2cc23d8673c327ae230"
 np.seterr(all='raise')
@@ -51,16 +46,7 @@ def two(env, name):
             raise AttributeError(f'{env} has no attribute {name}.')
     return setattr(env, name) # reached if env **has** attribute name.
 
-def str2bool(v):
-    if isinstance(v, bool):
-        return v
-    if v.lower() in ('yes', 'true', 't', 'y', '1'):
-        return True
-    elif v.lower() in ('no', 'false', 'f', 'n', '0'):
-        return False
-    else:
-        raise argparse.ArgumentTypeError('Boolean value expected.')
-    
+
 
 parser = argparse.ArgumentParser(description='PPO Arguments')
 parser.add_argument('--algo_name', type=str, default='ppo', help='the name of the RL algorithm')
@@ -73,8 +59,8 @@ parser.add_argument('--capture_video', action='store_true',default=False, help='
 parser.add_argument('--save_model', action='store_true',default=False, help='whether to save model into the `runs/{run_name}` folder')
 parser.add_argument('--upload_model', action='store_true',default=False, help='whether to upload the saved model to huggingface')
 parser.add_argument('--hf_entity', type=str, default='', help='the user or org name of the model repository from the Hugging Face Hub')
-parser.add_argument('--env_name', type=str, default='Humanoid-v5', help='the id of the environment')
-parser.add_argument('--max_steps', type=int, default=1000000, help='total timesteps of the experiments')
+parser.add_argument('--env_name', type=str, default='Hopper-v5', help='the id of the environment')
+parser.add_argument('--max_steps', type=int, default=None, help='total timesteps of the experiments')
 parser.add_argument('--learning_rate', type=float, default=3e-4, help='the learning rate of the optimizer')
 parser.add_argument('--num_envs', type=int, default=1, help='the number of parallel game environments')
 parser.add_argument('--num_steps', type=int, default=5120, help='the number of steps to run in each environment per policy rollout')
@@ -117,14 +103,14 @@ def make_env(env_name, idx, capture_video, run_name, gamma,evaluation=False):
     def thunk():
         
         
-        if args.env_name in ["walk","stand","trot","run"]:
-            env = DMCGym("dog",args.env_name)
+        # if args.env_name in ["walk","stand","trot","run"]:
+        #     env = DMCGym("dog",args.env_name)
         
-        else : env = gym.make(env_name,max_episode_steps=1000)
-        
+        # else : env = gym.make(env_name,max_episode_steps=1000)
+        env, eval_env = create_environments(args.env_name)
         
         env = gym.wrappers.FlattenObservation(env)  # deal with dm_control's Dict observation space
-        env = gym.wrappers.RecordEpisodeStatistics(env)
+        #env = gym.wrappers.RecordEpisodeStatistics(env)
         env = gym.wrappers.ClipAction(env)
         #env = gym.wrappers.NormalizeObservation(env)
         
@@ -200,9 +186,12 @@ class Agent(nn.Module):
 
 if __name__ == "__main__":
     
+    # Set max_steps using environment-specific default if not provided
+    max_steps = get_max_steps_for_env(args.env_name) if args.max_steps is None else args.max_steps
+    
     args.batch_size = int(args.num_envs * args.num_steps)
     args.minibatch_size = int(args.batch_size // args.num_minibatches)
-    args.num_iterations = args.max_steps // args.batch_size
+    args.num_iterations = max_steps // args.batch_size
     run_name = f"{args.env_name}__{args.seed}__{int(time.time())}"
     if args.track:
         wandb_config = {
@@ -379,21 +368,13 @@ if __name__ == "__main__":
     
             unlogged_steps = 0
            
-            #eval_env = copy.deepcopy(envs)
-            #eval_env.ret_rms = envs.ret_rms
-            #print(envs.envs[0].env.env.obs_rms)
-            #print(eval_env.envs[0].env.env.obs_rms)
             
             eval_env.envs[0].env.obs_rms = envs.envs[0].env.env.env.obs_rms 
 
-            
-
-            print("heeeeeeeeeeeeeeeeere")
             undisc_policy_return = rollout_policy_ppo(
                                                                     agent,env = eval_env,
                                                                     num_rollouts=10,
                                                                     discount = args.gamma,max_length=1000)
-            print("heeeeeeeeeeeeeeeeere2")
             eval_metrics = {"undisc_policy_return": undisc_policy_return}
 
             eval_metrics = {f'evaluation/{k}': v for k, v in eval_metrics.items()}

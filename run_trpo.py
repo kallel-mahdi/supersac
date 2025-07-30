@@ -23,9 +23,10 @@ os.environ["WANDB_API_KEY"]="28996bd59f1ba2c5a8c3f2cc23d8673c327ae230"
 def parse_args():
     # fmt: off
     parser = argparse.ArgumentParser()
+    parser.add_argument('--algo_name', type=str, default='trpo', help='the name of the RL algorithm')
     parser.add_argument("--exp_name", type=str, default=os.path.basename(__file__).rstrip(".py"),
         help="the name of this experiment")
-    parser.add_argument("--seed", type=int, default=1,
+    parser.add_argument("--seed", type=int, default=21,
         help="seed of the experiment")
     parser.add_argument("--torch_deterministic", type=str2bool, default=True, nargs="?", const=True,
         help="if toggled, `torch.backends.cudnn.deterministic=False`")
@@ -41,7 +42,7 @@ def parse_args():
         help="whether to capture videos of the agent performances (check out `videos` folder)")
 
     # Algorithm specific arguments
-    parser.add_argument("--env_name", type=str, default="Walker2d-v5",
+    parser.add_argument("--env_name", type=str, default="Hopper-v5",
         help="the id of the environment")
     parser.add_argument("--max_steps", type=int, default=None,
         help="total timesteps of the experiments")

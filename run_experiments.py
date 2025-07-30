@@ -26,7 +26,7 @@ ALGORITHM_CONFIGS = {
             'gae_lambda': 0.95,
             'num_minibatches': 32,
             'update_epochs': 10,
-            'clip_coef': 0.2,
+            'clip_coef': 0.15,
             'ent_coef': 0.0,
             'vf_coef': 0.5,
             'max_grad_norm': 0.5,
@@ -79,7 +79,7 @@ ALGORITHM_CONFIGS = {
         'default_args': {
             'gamma': 0.99,
             'entropy_coeff': 0.5,
-            'buffer_size': 1000000
+            'buffer_size': 100_000
         }
     },
     'trpo': {

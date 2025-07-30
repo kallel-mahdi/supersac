@@ -9,7 +9,10 @@ ml_collections
 --find-links https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
 jax[cuda]==0.6.0
 #nvidia-cublas-cu12==12.9.0.13
+torch --index-url https://download.pytorch.org/whl/cu128
 dm_control
 pandas
 matplotlib
 seaborn
+rliable
+numpy<2.0

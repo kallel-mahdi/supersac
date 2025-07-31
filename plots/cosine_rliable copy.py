@@ -34,7 +34,7 @@ METRICS = [
 #    "train/q_relative_bias_no_layernorm",    # Corresponds to "No LayerNorm"
 # ]
 
-LEGEND_LABELS = ["PPO+", "- Off-policy data", "Min Target", "- LayerNorm"]
+LEGEND_LABELS = ["PPO+", "- Off-policy data", "+ Min target", "- LayerNorm"]
 
 # Add this helper function before fetch_and_reshape_for_rliable
 def fetch_and_filter_runs(api, project_path, config_params):
@@ -116,7 +116,7 @@ def fetch_and_reshape_for_rliable(project_path, configs, metrics, labels):
             
     return final_scores
 
-def generate_cosine_plot(ax=None, algorithm_colors=None, show_legend=True, title_fontsize=16, label_fontsize=14, y_axis_order=None):
+def generate_cosine_plot(ax=None, algorithm_colors=None, show_legend=True, title_fontsize=16, label_fontsize=14, y_axis_order=None, fast_test=False):
     """
     Generate cosine similarity plot. Can be used standalone or as part of a combined plot.
     
@@ -127,11 +127,14 @@ def generate_cosine_plot(ax=None, algorithm_colors=None, show_legend=True, title
         title_fontsize: font size for title
         label_fontsize: font size for labels
         y_axis_order: list defining the order of algorithms on y-axis
+        fast_test: if True, use only 2 environments for faster testing
         
     Returns:
         list of algorithm names present in the plot
     """
-    scores = fetch_and_reshape_for_rliable(PROJECT_PATH, CONFIGS, METRICS, LEGEND_LABELS)
+    # Use limited configs for fast testing
+    configs_to_use = dict(list(CONFIGS.items())[:2]) if fast_test else CONFIGS
+    scores = fetch_and_reshape_for_rliable(PROJECT_PATH, configs_to_use, METRICS, LEGEND_LABELS)
 
     if not scores:
         print("Could not generate cosine plot due to lack of data.")
@@ -202,7 +205,7 @@ def generate_cosine_plot(ax=None, algorithm_colors=None, show_legend=True, title
         # Remove y-axis labels for combined plots (rely on shared legend)  
         ax.set_yticks([])
         ax.set_yticklabels([])
-        ax.set_xlabel('Cosine Similarity', fontsize=label_fontsize)
+        ax.set_xlabel('Cosine Similarity', fontsize=label_fontsize, color='#2C3E50')
     
     # Customize the plot
     ax.set_title('Gradient Quality (IQM)', fontsize=title_fontsize, pad=20, fontweight='bold', color='#2C3E50')
@@ -216,45 +219,3 @@ def generate_cosine_plot(ax=None, algorithm_colors=None, show_legend=True, title
     ax.spines['bottom'].set_color('#7F8C8D')
     
     return algorithms
-
-if __name__ == "__main__":
-    scores = fetch_and_reshape_for_rliable(PROJECT_PATH, CONFIGS, METRICS, LEGEND_LABELS)
-
-    if not scores:
-        print("Could not generate plots due to lack of data.")
-    else:
-        algorithms = list(scores.keys())
-        
-        # === Generate IQM Plot for Cosine Similarity Ranking ===
-        print("\nGenerating IQM Plot for Cosine Similarity...")
-        
-        # Calculate IQM and confidence intervals using proper rliable functions
-        aggregate_func = lambda x: np.array([rly.aggregate_iqm(x)])
-        aggregate_scores, aggregate_interval_estimates = rly_lib.get_interval_estimates(
-            scores, aggregate_func, reps=50000
-        )
-        
-        # Create larger figure to prevent overlapping
-        plt.figure(figsize=(10, 6))
-        
-        fig, axes = rly_plot.plot_interval_estimates(
-            aggregate_scores, 
-            aggregate_interval_estimates,
-            metric_names=['IQM'],
-            algorithms=algorithms,
-            xlabel='Cosine Similarity',
-            xlabel_y_coordinate=-0.15,
-            legend_kwargs={'loc': 'upper right', 'bbox_to_anchor': (1.0, 1.0), 'fontsize': 10}
-        )
-        
-        # Customize the plot
-        axes.set_title('Interquartile Mean (IQM) of Gradient Quality', fontsize=16, pad=20)
-        axes.grid(axis='x', linestyle='--', alpha=0.7)
-        
-        # Adjust layout to prevent overlapping
-        plt.subplots_adjust(left=0.25, right=0.85, top=0.9, bottom=0.15)
-        
-        output_path = "./cosine_similarity_iqm_plot.pdf"
-        print(f"\nSaving final plot to {output_path}")
-        plt.savefig(output_path, format="pdf", bbox_inches="tight")
-        plt.show()

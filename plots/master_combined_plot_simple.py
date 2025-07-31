@@ -27,7 +27,10 @@ sns.set_theme(style="ticks", rc={"font.family": "serif"})
 TITLE_FONTSIZE = 16
 LABEL_FONTSIZE = 14  
 TICK_FONTSIZE = 12
-LEGEND_FONTSIZE = 14  # Increased legend font size
+LEGEND_FONTSIZE = 16  # Increased legend font size further
+
+# === FAST TEST MODE ===
+FAST_TEST = False  # Use only 2 environments for faster testing
 
 plt.rcParams.update({
     'font.size': 12,
@@ -44,18 +47,18 @@ plt.rcParams.update({
 # === ALGORITHM COLORS (Consistent across all plots) ===
 ALGORITHM_COLORS = {
     "PPO+": "#2E8B8B",              # Deep Teal
+    "+ Min target": "#8E44AD",      # Rich Purple
     "- Off-policy data": "#FF8C42", # Warm Orange  
-    "Min Target": "#8E44AD",        # Rich Purple
     "- LayerNorm": "#E74C3C",       # Coral Red
-    "- Bounded actions": "#27AE60", # Green
-    "- Entropy": "#F39C12"          # Orange-Yellow
+    "- Bounded actions": "#3498DB", # Bright Blue (changed from green)
+    "- Entropy": "#F1C40F"          # Pure Yellow (changed from orange-yellow)
 }
 
 # === GLOBAL Y-AXIS ORDER (Consistent across all plots) ===
 GLOBAL_Y_AXIS_ORDER = [
     "PPO+",                 # Baseline (appears in cosine & bias)
+    "+ Min target",         # Addition to PPO+ (appears in all plots)
     "- Off-policy data",    # Appears in all plots  
-    "Min Target",           # Appears in all plots
     "- LayerNorm",         # Appears in all plots
     "- Bounded actions",   # Only in ablation
     "- Entropy"            # Only in ablation
@@ -79,7 +82,8 @@ def create_combined_plot():
         show_legend=False,
         title_fontsize=TITLE_FONTSIZE,
         label_fontsize=LABEL_FONTSIZE,
-        y_axis_order=GLOBAL_Y_AXIS_ORDER
+        y_axis_order=GLOBAL_Y_AXIS_ORDER,
+        fast_test=FAST_TEST
     )
     print(f"   Ablation algorithms: {algorithms_ablation}")
     
@@ -90,7 +94,8 @@ def create_combined_plot():
         show_legend=False,
         title_fontsize=TITLE_FONTSIZE,
         label_fontsize=LABEL_FONTSIZE,
-        y_axis_order=GLOBAL_Y_AXIS_ORDER
+        y_axis_order=GLOBAL_Y_AXIS_ORDER,
+        fast_test=FAST_TEST
     )
     print(f"   Cosine algorithms: {algorithms_cosine}")
     
@@ -101,7 +106,8 @@ def create_combined_plot():
         show_legend=False,
         title_fontsize=TITLE_FONTSIZE,
         label_fontsize=LABEL_FONTSIZE,
-        y_axis_order=GLOBAL_Y_AXIS_ORDER
+        y_axis_order=GLOBAL_Y_AXIS_ORDER,
+        fast_test=FAST_TEST
     )
     print(f"   Bias algorithms: {algorithms_bias}")
     
@@ -122,16 +128,20 @@ def create_combined_plot():
                 mpatches.Patch(color=ALGORITHM_COLORS[algo], label=algo)
             )
     
-    # Position shared legend at the top
+    # Position shared legend at the top with improved spacing
     if legend_elements:
         fig.legend(handles=legend_elements, 
                   loc='upper center', 
-                  bbox_to_anchor=(0.5, 0.98),
+                  bbox_to_anchor=(0.5, 1.02),  # Moved higher
                   ncol=len(legend_elements),
                   fontsize=LEGEND_FONTSIZE,
                   frameon=True,
                   fancybox=True,
-                  shadow=True)
+                  shadow=True,
+                  columnspacing=1.5,    # More space between legend columns
+                  handletextpad=0.8,    # More space between legend markers and text
+                  handlelength=2.0,     # Longer legend markers for better visibility
+                  borderaxespad=0.5)    # Space between legend and axes
         print(f"Created shared legend with {len(legend_elements)} algorithms")
     
     # Apply consistent styling to all subplots
@@ -142,11 +152,16 @@ def create_combined_plot():
         ax.spines['left'].set_color('#7F8C8D')
         ax.spines['bottom'].set_color('#7F8C8D')
         
-        # Ensure consistent tick label sizes
-        ax.tick_params(axis='both', which='major', labelsize=TICK_FONTSIZE)
+        # Ensure consistent tick label sizes and colors (only for tick labels, not axis labels)
+        ax.tick_params(axis='both', which='major', labelsize=TICK_FONTSIZE, labelcolor='#34495E')
     
-    # Adjust layout to accommodate legend
-    plt.subplots_adjust(top=0.85, left=0.06, right=0.94, bottom=0.1, wspace=0.3)
+    # Ensure all x-axis labels have consistent styling (override any previous settings)
+    for ax in [ax1, ax2, ax3]:
+        ax.xaxis.label.set_color('#2C3E50')
+        ax.xaxis.label.set_fontweight('normal')  # Ensure consistent font weight
+    
+    # Adjust layout to accommodate larger legend with better spacing
+    plt.subplots_adjust(top=0.85, left=0.06, right=0.94, bottom=0.12, wspace=0.25)  # More space for legend
     
     # Save the combined plot
     output_path = "./combined_three_panel_plot.pdf"
@@ -167,5 +182,8 @@ def create_combined_plot():
 
 if __name__ == "__main__":
     print("Starting combined plot generation...")
-    print("Note: Using fast test mode for ablation plot (2 environments instead of 6)")
+    if FAST_TEST:
+        print("Note: FAST TEST MODE enabled - using only 2 environments instead of 6 for all plots")
+    else:
+        print("Note: Using all 6 environments for complete analysis")
     create_combined_plot()

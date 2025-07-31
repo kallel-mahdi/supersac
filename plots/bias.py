@@ -81,7 +81,7 @@ METRICS = [
 OVERLAY_ENVIRONMENT_MEDIANS = True
 
 # Define the labels for the legend and the categories
-LEGEND_LABELS = ["PPO+", "- Off-policy data", "Min Target", "- LayerNorm"]
+LEGEND_LABELS = ["PPO+", "- Off-policy data", "+ Min target", "- LayerNorm"]
 
 # Define a more vibrant and distinct color palette for better visual appeal
 # Colors: Deep Teal, Warm Orange, Rich Purple, Coral Red
@@ -168,7 +168,7 @@ def aggregate_data_across_environments(configs, metrics, max_step_limit):
     else:
         return aggregated_data
 
-def generate_bias_plot(ax=None, algorithm_colors=None, show_legend=True, title_fontsize=16, label_fontsize=14, y_axis_order=None):
+def generate_bias_plot(ax=None, algorithm_colors=None, show_legend=True, title_fontsize=16, label_fontsize=14, y_axis_order=None, fast_test=False):
     """
     Generate bias violin plot. Can be used standalone or as part of a combined plot.
     
@@ -179,6 +179,7 @@ def generate_bias_plot(ax=None, algorithm_colors=None, show_legend=True, title_f
         title_fontsize: font size for title
         label_fontsize: font size for labels
         y_axis_order: list defining the order of algorithms on y-axis
+        fast_test: if True, use only 2 environments for faster testing
         
     Returns:
         list of algorithm names present in the plot
@@ -187,11 +188,14 @@ def generate_bias_plot(ax=None, algorithm_colors=None, show_legend=True, title_f
     
     print("=== Aggregating Data Across All Environments ===")
     
+    # Use limited configs for fast testing
+    configs_to_use = dict(list(CONFIGS.items())[:2]) if fast_test else CONFIGS
+    
     # Aggregate data across all environments
     if OVERLAY_ENVIRONMENT_MEDIANS:
-        aggregated_data, environment_medians = aggregate_data_across_environments(CONFIGS, METRICS, MAX_STEP_LIMIT)
+        aggregated_data, environment_medians = aggregate_data_across_environments(configs_to_use, METRICS, MAX_STEP_LIMIT)
     else:
-        aggregated_data = aggregate_data_across_environments(CONFIGS, METRICS, MAX_STEP_LIMIT)
+        aggregated_data = aggregate_data_across_environments(configs_to_use, METRICS, MAX_STEP_LIMIT)
     
     # Check if we have data for all metrics
     valid_metrics = [metric for metric, data in aggregated_data.items() if len(data) > 0]
@@ -341,7 +345,7 @@ def generate_bias_plot(ax=None, algorithm_colors=None, show_legend=True, title_f
     # --- Enhanced Styling ---
     ax.set_title('Q-Function Bias Distribution', 
                 fontsize=title_fontsize, pad=20, fontweight='bold', color='#2C3E50')
-    ax.set_xlabel('Relative Bias', fontsize=label_fontsize, fontweight='semibold', color='#34495E')
+    ax.set_xlabel('Relative Bias', fontsize=label_fontsize, color='#2C3E50')
     
     # Set y-axis labels for transposed plot
     ax.set_yticks(positions)
@@ -365,197 +369,6 @@ def generate_bias_plot(ax=None, algorithm_colors=None, show_legend=True, title_f
     ax.spines['left'].set_color('#7F8C8D')
     ax.spines['bottom'].set_color('#7F8C8D')
     
-    # Add sample count to the left of each violin (for horizontal layout)
-    for i, (pos, label, data) in enumerate(zip(positions, violin_labels, violin_data)):
-        n_samples = len(data)
-        
-        ax.text(ax.get_xlim()[0] - 0.02 * (ax.get_xlim()[1] - ax.get_xlim()[0]), pos, 
-                f'n={n_samples}',
-                ha='right', va='center', fontsize=9, color='#7F8C8D', 
-                style='italic')
+    # Sample count labels removed for cleaner appearance in combined plots
     
     return violin_labels
-
-
-# --- Main Plotting Script ---
-
-if __name__ == "__main__":
-    # Set the overall theme to be simple and clean
-    sns.set_theme(style="ticks", rc={"font.family": "serif"})
-    
-    MAX_STEP_LIMIT = 500_000
-    
-    print("=== Aggregating Data Across All Environments ===")
-    
-    # Aggregate data across all environments
-    if OVERLAY_ENVIRONMENT_MEDIANS:
-        aggregated_data, environment_medians = aggregate_data_across_environments(CONFIGS, METRICS, MAX_STEP_LIMIT)
-    else:
-        aggregated_data = aggregate_data_across_environments(CONFIGS, METRICS, MAX_STEP_LIMIT)
-    
-    # Check if we have data for all metrics
-    valid_metrics = [metric for metric, data in aggregated_data.items() if len(data) > 0]
-    if not valid_metrics:
-        print("No valid data found for any metrics!")
-        exit()
-    
-    print(f"\nCreating violin plot with {len(valid_metrics)} metrics")
-    
-    # Prepare data for violin plot with outlier removal
-    violin_data = []
-    violin_labels = []
-    
-    def remove_outliers_iqr(data):
-        """Remove outliers using the IQR method."""
-        q1 = np.percentile(data, 25)
-        q3 = np.percentile(data, 75)
-        iqr = q3 - q1
-        lower_bound = q1 - 1.5 * iqr
-        upper_bound = q3 + 1.5 * iqr
-        return data[(data >= lower_bound) & (data <= upper_bound)]
-    
-    for i, metric in enumerate(METRICS):
-        if metric in aggregated_data and len(aggregated_data[metric]) > 0:
-            values = aggregated_data[metric]
-            original_count = len(values)
-            
-            # Remove outliers
-            values_no_outliers = remove_outliers_iqr(values)
-            outliers_removed = original_count - len(values_no_outliers)
-            
-            violin_data.append(values_no_outliers)
-            violin_labels.append(LEGEND_LABELS[i])
-            print(f"  {LEGEND_LABELS[i]}: {len(values_no_outliers)} values (removed {outliers_removed} outliers), range [{np.min(values_no_outliers):.3f}, {np.max(values_no_outliers):.3f}]")
-    
-    # Create the figure with better styling
-    fig, ax = plt.subplots(1, 1, figsize=(14, 9))
-    fig.patch.set_facecolor('white')
-    
-    # Create violin plot with enhanced parameters
-    positions = np.arange(len(violin_data))
-    parts = ax.violinplot(
-        violin_data,
-        positions=positions,
-        showmeans=True,
-        showmedians=True,
-        showextrema=True,
-        widths=0.7,  # Make violins wider for better visibility
-        bw_method=0.3  # Adjust bandwidth for smoother curves
-    )
-    
-    # Customize violin colors with enhanced styling
-    for i, pc in enumerate(parts['bodies']):
-        if i < len(CUSTOM_PALETTE):
-            pc.set_facecolor(CUSTOM_PALETTE[i])
-            pc.set_alpha(0.8)  # Slightly more opaque for better visibility
-            pc.set_edgecolor('darkgray')
-            pc.set_linewidth(1.5)
-    
-    # Customize other violin plot elements with better contrast
-    parts['cmeans'].set_color('#2C3E50')  # Dark blue-gray for means
-    parts['cmeans'].set_linewidth(2.5)
-    parts['cmeans'].set_linestyle('--')  # Dashed line for means
-    
-    parts['cmedians'].set_color('white')  # White medians for contrast
-    parts['cmedians'].set_linewidth(3)
-    
-    parts['cbars'].set_color('#34495E')  # Darker gray for bars
-    parts['cbars'].set_linewidth(1.8)
-    parts['cmins'].set_color('#34495E')
-    parts['cmins'].set_linewidth(1.8)
-    parts['cmaxes'].set_color('#34495E')
-    parts['cmaxes'].set_linewidth(1.8)
-    
-    # Overlay individual environment medians if flag is enabled
-    if OVERLAY_ENVIRONMENT_MEDIANS:
-        for i, metric in enumerate(METRICS):
-            if metric in environment_medians and len(environment_medians[metric]) > 0:
-                env_medians = environment_medians[metric]
-                # Create x positions with small random jitter for visibility
-                x_positions = np.full(len(env_medians), i) + np.random.normal(0, 0.05, len(env_medians))
-                
-                # Plot star markers for environment medians
-                ax.scatter(
-                    x_positions, env_medians,
-                    color='gold',  # Bright yellow/gold color
-                    alpha=0.9,     # More opaque for better visibility
-                    s=120,         # Larger size
-                    marker='*',    # Star shape
-                    edgecolors='black',
-                    linewidth=1.5,
-                    zorder=3  # Ensure points appear on top of violins
-                )
-    
-    # Add median value labels on top of violins
-    for i, data in enumerate(violin_data):
-        median_val = np.median(data)
-        
-        # Calculate violin top position for label placement
-        y_max = np.max(data)
-        y_offset = (ax.get_ylim()[1] - ax.get_ylim()[0]) * 0.05  # 5% of plot height above violin
-        
-        # Add median label above the violin
-        ax.text(
-            i, y_max + y_offset, f'{median_val:.2f}',
-            ha='center', va='bottom',
-            color='#2C3E50',
-            fontsize=11,
-            fontweight='bold',
-            bbox=dict(facecolor='white', alpha=0.9, pad=3, boxstyle='round,pad=0.3', edgecolor='#2C3E50', linewidth=1)
-        )
-    
-    # --- Enhanced Styling ---
-    ax.set_title('Q-Function Relative Bias Distribution Across All Environments', 
-                fontsize=18, pad=25, fontweight='bold', color='#2C3E50')
-    ax.set_ylabel('Relative Bias', fontsize=16, fontweight='semibold', color='#34495E')
-    ax.set_xlabel('Estimator Type', fontsize=16, fontweight='semibold', color='#34495E')
-    
-    # Set x-axis labels with better spacing
-    ax.set_xticks(positions)
-    ax.set_xticklabels(violin_labels, rotation=0, fontweight='medium')
-    
-    # Add horizontal line at zero for reference with better styling
-    ax.axhline(y=0, color='#7F8C8D', linestyle='-', linewidth=2, alpha=0.8, zorder=1)
-    
-    # Add subtle grid
-    ax.grid(True, alpha=0.2, linestyle=':', color='#BDC3C7', zorder=0)
-    
-    # Set background color
-    ax.set_facecolor('white')
-    
-    # Remove top and right spines for cleaner look
-    ax.spines['top'].set_visible(False)
-    ax.spines['right'].set_visible(False)
-    ax.spines['left'].set_color('#7F8C8D')
-    ax.spines['bottom'].set_color('#7F8C8D')
-    
-    # Add sample count below each violin
-    for i, (label, data) in enumerate(zip(violin_labels, violin_data)):
-        n_samples = len(data)
-        
-        ax.text(i, ax.get_ylim()[0] - 0.05 * (ax.get_ylim()[1] - ax.get_ylim()[0]), 
-                f'n={n_samples}',
-                ha='center', va='top', fontsize=9, color='#7F8C8D', 
-                style='italic')
-    
-    # Adjust layout with better spacing
-    plt.tight_layout(pad=3.0)
-    
-    # Save the figure with high quality
-    output_path = "./q_bias_violin_comparison_enhanced.pdf"
-    print(f"\nSaving enhanced violin plot to {output_path}")
-    plt.savefig(output_path, format="pdf", bbox_inches="tight", dpi=300, facecolor='white')
-    
-    plt.show()
-    
-    # Print summary statistics
-    print("\n=== Summary Statistics ===")
-    for i, (label, data) in enumerate(zip(violin_labels, violin_data)):
-        print(f"\n{label}:")
-        print(f"  Count: {len(data)}")
-        print(f"  Median: {np.median(data):.4f}")
-        print(f"  Std: {np.std(data):.4f}")
-        print(f"  Min: {np.min(data):.4f}")
-        print(f"  Max: {np.max(data):.4f}")
-        print(f"  25th percentile: {np.percentile(data, 25):.4f}")
-        print(f"  75th percentile: {np.percentile(data, 75):.4f}") 

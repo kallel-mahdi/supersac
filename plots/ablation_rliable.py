@@ -19,8 +19,7 @@ BASELINE_ALGO_NAME = "PPO+"
 # Set TEST_MODE = False to fetch real data from Weights & Biases
 TEST_MODE = False
 
-# Set FAST_TEST = True to use only 2 environments instead of 6 for faster testing
-FAST_TEST = True
+# Note: fast_test parameter in generate_ablation_plot() controls environment count
 
 # === Algorithm Name Mapping for Consistency ===
 ALGORITHM_NAME_MAPPING = {
@@ -28,7 +27,7 @@ ALGORITHM_NAME_MAPPING = {
     "Unbounded Actions": "- Bounded actions", 
     "No Entropy": "- Entropy",
     "No LayerNorm": "- LayerNorm",
-    "Min Target": "Min Target"
+    "Min Target": "+ Min target"
 }
 
 # === Step 1: Define the Default and Ablation Configs ===
@@ -66,7 +65,6 @@ for name, changes in ABLATIONS.items():
 
 # Define the tasks (environments) for the study
 ALL_TASKS = ["InvertedDoublePendulum-v5", "Hopper-v5", "Walker2d-v5", "HalfCheetah-v5", "Ant-v5", "Humanoid-v5"]
-TASKS = ALL_TASKS[:2] if FAST_TEST else ALL_TASKS  # Use only 2 tasks for fast testing
 
 # Helper function to generate mock data for testing
 def generate_mock_data(tasks, algorithms, num_seeds):
@@ -126,7 +124,7 @@ def fetch_and_prepare_data(project_path, tasks, algorithms, num_seeds, score_key
                     scores[algo_name][run_idx, task_idx] = final_performance
     return scores
 
-def generate_ablation_plot(ax=None, algorithm_colors=None, show_legend=True, title_fontsize=16, label_fontsize=14, y_axis_order=None):
+def generate_ablation_plot(ax=None, algorithm_colors=None, show_legend=True, title_fontsize=16, label_fontsize=14, y_axis_order=None, fast_test=False):
     """
     Generate ablation plot. Can be used standalone or as part of a combined plot.
     
@@ -137,15 +135,19 @@ def generate_ablation_plot(ax=None, algorithm_colors=None, show_legend=True, tit
         title_fontsize: font size for title
         label_fontsize: font size for labels
         y_axis_order: list defining the order of algorithms on y-axis
+        fast_test: if True, use only 2 environments for faster testing
         
     Returns:
         list of algorithm names present in the plot
     """
+    # Use limited tasks for fast testing
+    tasks_to_use = ALL_TASKS[:2] if fast_test else ALL_TASKS
+    
     # Fetch data (same logic as main script)
     if TEST_MODE:
-        absolute_scores = generate_mock_data(TASKS, ALGORITHMS, NUM_SEEDS)
+        absolute_scores = generate_mock_data(tasks_to_use, ALGORITHMS, NUM_SEEDS)
     else:
-        absolute_scores = fetch_and_prepare_data(PROJECT_PATH, TASKS, ALGORITHMS, NUM_SEEDS)
+        absolute_scores = fetch_and_prepare_data(PROJECT_PATH, tasks_to_use, ALGORITHMS, NUM_SEEDS)
 
     if not absolute_scores:
         print("Could not proceed due to missing ablation data.")
@@ -227,7 +229,7 @@ def generate_ablation_plot(ax=None, algorithm_colors=None, show_legend=True, tit
         # Remove y-axis labels for combined plots (rely on shared legend)
         ax.set_yticks([])
         ax.set_yticklabels([])
-        ax.set_xlabel('Percent Loss', fontsize=label_fontsize)
+        ax.set_xlabel('Percent Loss', fontsize=label_fontsize, color='#2C3E50')
     
     # Customize the plot
     ax.set_title('Ablations on PPO+', fontsize=title_fontsize, pad=20, fontweight='bold', color='#2C3E50')
@@ -242,58 +244,3 @@ def generate_ablation_plot(ax=None, algorithm_colors=None, show_legend=True, tit
     ax.spines['bottom'].set_color('#7F8C8D')
     
     return mapped_names
-
-if __name__ == "__main__":
-    # === Step 2: Fetch absolute performance scores ===
-    if TEST_MODE:
-        absolute_scores = generate_mock_data(TASKS, ALGORITHMS, NUM_SEEDS)
-    else:
-        absolute_scores = fetch_and_prepare_data(PROJECT_PATH, TASKS, ALGORITHMS, NUM_SEEDS)
-
-    if not absolute_scores:
-        print("Could not proceed due to missing data.")
-    else:
-        # === Step 3: Calculate relative percent loss ===
-        baseline_scores = absolute_scores[BASELINE_ALGO_NAME]
-        ablated_algo_names = list(ABLATIONS.keys())
-        
-        loss_scores = {}
-        
-        # Calculate loss for each ablation relative to baseline (exclude PPO+ from plot)
-        for name in ablated_algo_names:
-            ablated_scores = absolute_scores[name]
-            percent_loss = 100 * (baseline_scores - ablated_scores) / (np.abs(baseline_scores) + 1e-10)
-            loss_scores[name] = percent_loss
-
-        # === Step 4: Get IQM and CIs of the loss scores ===
-        # Following rliable documentation pattern with aggregate_func
-        aggregate_func = lambda x: np.array([rly.aggregate_iqm(x)])
-        aggregate_loss, aggregate_loss_cis = rly_lib.get_interval_estimates(
-            loss_scores, aggregate_func, reps=5000)
-
-        # === Step 5: Create the plot using rliable's plot_utils ===
-        algo_names_for_plot = list(loss_scores.keys())  # Only ablations, no PPO+
-        
-        # Create larger figure to prevent overlapping
-        plt.figure(figsize=(10, 6))
-        
-        fig, axes = rly_plot.plot_interval_estimates(
-            aggregate_loss, aggregate_loss_cis,
-            metric_names=['IQM'],
-            algorithms=algo_names_for_plot, 
-            xlabel='Percent Loss',
-            xlabel_y_coordinate=-0.15,
-            legend_kwargs={'loc': 'upper right', 'bbox_to_anchor': (1.0, 1.0), 'fontsize': 10})
-        
-        # Customize the plot
-        axes.set_title('Ablations on PPO+', fontsize=16, pad=20)
-        axes.axvline(0, color='black', linestyle='--', lw=1)
-        axes.grid(axis='x', linestyle='--', alpha=0.7)
-        
-        # Adjust layout to prevent overlapping
-        plt.subplots_adjust(left=0.25, right=0.85, top=0.9, bottom=0.15)
-        
-        output_path = "./ablation_loss_full_steps_plot.pdf"
-        print(f"\nSaving final plot to {output_path}")
-        plt.savefig(output_path, format="pdf", bbox_inches="tight")
-        plt.show()

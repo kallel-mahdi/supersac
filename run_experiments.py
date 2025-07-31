@@ -79,7 +79,7 @@ ALGORITHM_CONFIGS = {
         'default_args': {
             'gamma': 0.99,
             'entropy_coeff': 0.5,
-            'buffer_size': 100_000
+            'buffer_size': 1000_000
         }
     },
     'trpo': {
@@ -89,8 +89,8 @@ ALGORITHM_CONFIGS = {
             'num_steps': 5120,
             'gamma': 0.99,
             'gae_lambda': 0.95,
-            'num_minibatches': 1,
-            'update_epochs': 1,
+            'num_minibatches': 32,
+            'update_epochs': 10,
             'clip_coef': 0.2,
             'vf_coef': 0.5,
             'max_grad_norm': 0.5,
@@ -104,7 +104,7 @@ ALGORITHM_CONFIGS = {
 
 # Common environments
 DEFAULT_ENVS = [
-    "InvertedDoublePendulum-v5", 
+    #"InvertedDoublePendulum-v5", 
     "Hopper-v5", 
     "Walker2d-v5", 
     "HalfCheetah-v5", 
@@ -206,6 +206,12 @@ def format_command(algorithm: str, config: Dict[str, Any], execution_mode: str, 
     """Format the execution command"""
     script = ALGORITHM_CONFIGS[algorithm]['script']
     
+    # Determine virtual environment based on algorithm
+    if algorithm in ['ppo', 'ppo_ours', 'trpo']:
+        venv_path = '.venv'
+    else:
+        venv_path = '.venv_jax'
+    
     # Build argument string
     args_str = []
     for param, value in config.items():
@@ -217,9 +223,9 @@ def format_command(algorithm: str, config: Dict[str, Any], execution_mode: str, 
     args_string = ' '.join(args_str)
     
     if execution_mode == 'slurm':
-        command = f'sbatch {job_script} .venv/bin/python {script} {args_string}'
+        command = f'sbatch {job_script} {venv_path}/bin/python {script} {args_string}'
     else:
-        command = f'.venv/bin/python {script} {args_string}'
+        command = f'{venv_path}/bin/python {script} {args_string}'
     
     return command
 

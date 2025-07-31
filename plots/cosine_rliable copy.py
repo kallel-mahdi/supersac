@@ -6,6 +6,9 @@ import rliable.plot_utils as rly_plot
 import matplotlib.pyplot as plt
 from collections import defaultdict
 
+# Import centralized styling
+from style import apply_spine_styling
+
 # --- Configuration (Copied from your script) ---
 ENTITY = "mahdikallel"
 PROJECT = "AAAI_GRAD_100K"
@@ -116,16 +119,15 @@ def fetch_and_reshape_for_rliable(project_path, configs, metrics, labels):
             
     return final_scores
 
-def generate_cosine_plot(ax=None, algorithm_colors=None, show_legend=True, title_fontsize=16, label_fontsize=14, y_axis_order=None, fast_test=False):
+def generate_cosine_plot(ax=None, algorithm_colors=None, show_legend=True, y_axis_order=None, fast_test=False):
     """
     Generate cosine similarity plot. Can be used standalone or as part of a combined plot.
+    Font sizes are handled globally by style.py
     
     Args:
         ax: matplotlib axes to plot on (if None, creates new figure)
         algorithm_colors: dict mapping algorithm names to colors
         show_legend: whether to show legend
-        title_fontsize: font size for title
-        label_fontsize: font size for labels
         y_axis_order: list defining the order of algorithms on y-axis
         fast_test: if True, use only 2 environments for faster testing
         
@@ -205,17 +207,14 @@ def generate_cosine_plot(ax=None, algorithm_colors=None, show_legend=True, title
         # Remove y-axis labels for combined plots (rely on shared legend)  
         ax.set_yticks([])
         ax.set_yticklabels([])
-        ax.set_xlabel('Cosine Similarity', fontsize=label_fontsize, color='#2C3E50')
+        ax.set_xlabel('Cosine Similarity', color='#2C3E50')
     
     # Customize the plot
-    ax.set_title('Gradient Quality (IQM)', fontsize=title_fontsize, pad=20, fontweight='bold', color='#2C3E50')
+    ax.set_title('Gradient Quality (IQM)', pad=20, fontweight='bold', color='#2C3E50')
     ax.grid(True, alpha=0.3, linestyle='--', color='#BDC3C7', zorder=0)
     ax.set_facecolor('white')
     
-    # Remove top and right spines for consistency
-    ax.spines['top'].set_visible(False)
-    ax.spines['right'].set_visible(False)
-    ax.spines['left'].set_color('#7F8C8D')
-    ax.spines['bottom'].set_color('#7F8C8D')
+    # Apply consistent styling using centralized function
+    apply_spine_styling(ax)
     
     return algorithms

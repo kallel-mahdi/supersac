@@ -1,12 +1,19 @@
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
-import seaborn as sns
 import numpy as np
 import sys
 import os
 
 # Add the plots directory to path so we can import the individual scripts
 sys.path.append(os.path.dirname(__file__))
+
+# Import centralized styling
+from style import (
+    ALGORITHM_COLORS, 
+    create_publication_ready_figure,
+    create_shared_legend_from_algorithms,
+    save_publication_figure
+)
 
 # Import the plotting functions from the modified individual scripts
 from ablation_rliable import generate_ablation_plot
@@ -20,39 +27,8 @@ cosine_module = importlib.util.module_from_spec(cosine_spec)
 cosine_spec.loader.exec_module(cosine_module)
 generate_cosine_plot = cosine_module.generate_cosine_plot
 
-# === CONSISTENT STYLING CONFIGURATION ===
-sns.set_theme(style="ticks", rc={"font.family": "serif"})
-
-# Unified font sizes and styling
-TITLE_FONTSIZE = 16
-LABEL_FONTSIZE = 14  
-TICK_FONTSIZE = 12
-LEGEND_FONTSIZE = 16  # Increased legend font size further
-
 # === FAST TEST MODE ===
-FAST_TEST = False  # Use only 2 environments for faster testing
-
-plt.rcParams.update({
-    'font.size': 12,
-    'axes.titlesize': TITLE_FONTSIZE,
-    'axes.labelsize': LABEL_FONTSIZE,
-    'xtick.labelsize': TICK_FONTSIZE,
-    'ytick.labelsize': TICK_FONTSIZE,
-    'legend.fontsize': LEGEND_FONTSIZE,
-    'lines.linewidth': 2.5,
-    'grid.alpha': 0.3,
-    'grid.linestyle': '--',
-})
-
-# === ALGORITHM COLORS (Consistent across all plots) ===
-ALGORITHM_COLORS = {
-    "PPO+": "#2E8B8B",              # Deep Teal
-    "+ Min target": "#8E44AD",      # Rich Purple
-    "- Off-policy data": "#FF8C42", # Warm Orange  
-    "- LayerNorm": "#E74C3C",       # Coral Red
-    "- Bounded actions": "#3498DB", # Bright Blue (changed from green)
-    "- Entropy": "#F1C40F"          # Pure Yellow (changed from orange-yellow)
-}
+FAST_TEST = True  # Use only 2 environments for faster testing
 
 # === GLOBAL Y-AXIS ORDER (Consistent across all plots) ===
 GLOBAL_Y_AXIS_ORDER = [
@@ -67,9 +43,8 @@ GLOBAL_Y_AXIS_ORDER = [
 def create_combined_plot():
     """Create the combined three-panel plot with shared legend."""
     
-    # Create figure with 3 subplots
-    fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(21, 7))
-    fig.patch.set_facecolor('white')
+    # Create figure with 3 subplots using utility function
+    fig, (ax1, ax2, ax3) = create_publication_ready_figure(figsize=(21, 7), nrows=1, ncols=3)
     
     print("Generating combined plot...")
     print("=" * 50)
@@ -80,8 +55,6 @@ def create_combined_plot():
         ax=ax1, 
         algorithm_colors=ALGORITHM_COLORS, 
         show_legend=False,
-        title_fontsize=TITLE_FONTSIZE,
-        label_fontsize=LABEL_FONTSIZE,
         y_axis_order=GLOBAL_Y_AXIS_ORDER,
         fast_test=FAST_TEST
     )
@@ -92,8 +65,6 @@ def create_combined_plot():
         ax=ax2, 
         algorithm_colors=ALGORITHM_COLORS, 
         show_legend=False,
-        title_fontsize=TITLE_FONTSIZE,
-        label_fontsize=LABEL_FONTSIZE,
         y_axis_order=GLOBAL_Y_AXIS_ORDER,
         fast_test=FAST_TEST
     )
@@ -104,8 +75,6 @@ def create_combined_plot():
         ax=ax3, 
         algorithm_colors=ALGORITHM_COLORS, 
         show_legend=False,
-        title_fontsize=TITLE_FONTSIZE,
-        label_fontsize=LABEL_FONTSIZE,
         y_axis_order=GLOBAL_Y_AXIS_ORDER,
         fast_test=FAST_TEST
     )
@@ -119,59 +88,20 @@ def create_combined_plot():
     
     print(f"\nAll algorithms found: {sorted(all_algorithms)}")
     
-    # Create shared legend with consistent ordering based on global order
-    legend_elements = []
-    # Use global order, but only include algorithms that appear in plots
-    for algo in GLOBAL_Y_AXIS_ORDER:
-        if algo in all_algorithms and algo in ALGORITHM_COLORS:
-            legend_elements.append(
-                mpatches.Patch(color=ALGORITHM_COLORS[algo], label=algo)
-            )
+    # Create shared legend using utility function
+    legend_elements = create_shared_legend_from_algorithms(
+        fig, 
+        [algo for algo in GLOBAL_Y_AXIS_ORDER if algo in all_algorithms], 
+        ALGORITHM_COLORS
+    )
+    print(f"Created shared legend with {len(legend_elements)} algorithms")
     
-    # Position shared legend at the top with improved spacing
-    if legend_elements:
-        fig.legend(handles=legend_elements, 
-                  loc='upper center', 
-                  bbox_to_anchor=(0.5, 1.02),  # Moved higher
-                  ncol=len(legend_elements),
-                  fontsize=LEGEND_FONTSIZE,
-                  frameon=True,
-                  fancybox=True,
-                  shadow=True,
-                  columnspacing=1.5,    # More space between legend columns
-                  handletextpad=0.8,    # More space between legend markers and text
-                  handlelength=2.0,     # Longer legend markers for better visibility
-                  borderaxespad=0.5)    # Space between legend and axes
-        print(f"Created shared legend with {len(legend_elements)} algorithms")
+    # Adjust layout to accommodate legend
+    plt.subplots_adjust(top=0.85, left=0.06, right=0.94, bottom=0.12, wspace=0.25)
     
-    # Apply consistent styling to all subplots
-    for ax in [ax1, ax2, ax3]:
-        # Remove top and right spines for cleaner look
-        ax.spines['top'].set_visible(False)
-        ax.spines['right'].set_visible(False)
-        ax.spines['left'].set_color('#7F8C8D')
-        ax.spines['bottom'].set_color('#7F8C8D')
-        
-        # Ensure consistent tick label sizes and colors (only for tick labels, not axis labels)
-        ax.tick_params(axis='both', which='major', labelsize=TICK_FONTSIZE, labelcolor='#34495E')
-    
-    # Ensure all x-axis labels have consistent styling (override any previous settings)
-    for ax in [ax1, ax2, ax3]:
-        ax.xaxis.label.set_color('#2C3E50')
-        ax.xaxis.label.set_fontweight('normal')  # Ensure consistent font weight
-    
-    # Adjust layout to accommodate larger legend with better spacing
-    plt.subplots_adjust(top=0.85, left=0.06, right=0.94, bottom=0.12, wspace=0.25)  # More space for legend
-    
-    # Save the combined plot
-    output_path = "./combined_three_panel_plot.pdf"
-    print(f"\nSaving combined plot to {output_path}")
-    plt.savefig(output_path, format="pdf", bbox_inches="tight", dpi=300, facecolor='white')
-    
-    # Also save as PNG for easier viewing
-    png_path = "./combined_three_panel_plot.png"
-    print(f"Saving combined plot to {png_path}")
-    plt.savefig(png_path, format="png", bbox_inches="tight", dpi=300, facecolor='white')
+    # Save the combined plot using centralized function
+    print(f"\nSaving combined plot...")
+    save_publication_figure(fig, "./combined_three_panel_plot")
     
     plt.show()
     

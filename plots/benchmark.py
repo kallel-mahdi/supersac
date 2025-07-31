@@ -1,9 +1,17 @@
 import matplotlib.pyplot as plt
-import seaborn as sns
 import pandas as pd
 import wandb
 import os
 import numpy as np
+
+# Import centralized styling
+from style import (
+    ALGORITHM_COLORS, 
+    create_publication_ready_figure,
+    set_axis_labels,
+    setup_shared_legend, 
+    save_publication_figure
+)
 
 # --- Configuration ---
 ENTITY = "mahdikallel"
@@ -11,28 +19,7 @@ PROJECT = "BASELINE_FINAL"
 PROJECT_PATH = f"{ENTITY}/{PROJECT}"
 
 # --- Test Mode ---
-TEST_MODE = True
-
-# --- Styling ---
-sns.set_theme(style="ticks", rc={"font.family": "serif"})
-plt.rcParams.update({
-    'font.size': 12,
-    'axes.titlesize': 16,
-    'axes.labelsize': 14,
-    'xtick.labelsize': 12,
-    'ytick.labelsize': 12,
-    'legend.fontsize': 16,
-    'lines.linewidth': 2.5,
-})
-
-# --- Algorithm Colors ---
-ALGORITHM_COLORS = {
-    "PPO+": "#2E8B8B",
-    "PPO": "#8E44AD", 
-    "PPO(ours)": "#FF8C42",
-    "SAC": "#E74C3C",
-    "TRPO": "#3498DB"
-}
+TEST_MODE = False
 
 # --- Algorithm Configurations ---
 ALGORITHMS = {
@@ -118,11 +105,10 @@ def create_benchmark_plot():
         print("No data available")
         return
     
-    # Create plot
-    fig, axes = plt.subplots(2, 3, figsize=(24, 12))
-    fig.patch.set_facecolor('white')
+    # Create plot using utility function
+    fig, axes = create_publication_ready_figure(figsize=(24, 12), nrows=2, ncols=3)
     
-    for ax, env, max_step in zip(axes.flatten(), ENVS, MAX_STEPS):
+    for ax, env, max_step in zip(axes, ENVS, MAX_STEPS):
         for algo in ALGORITHMS:
             if algo not in data:
                 continue
@@ -143,34 +129,16 @@ def create_benchmark_plot():
             ax.plot(x, mean, label=algo.upper(), color=color, linewidth=2.5)
             ax.fill_between(x, mean - std, mean + std, color=color, alpha=0.3)
         
-        # Style subplot
-        ax.set_xlabel('Million Steps')
-        ax.set_ylabel('Policy Return')
-        ax.set_title(env)
-        ax.spines['top'].set_visible(False)
-        ax.spines['right'].set_visible(False)
+        # Set axis labels using utility function
+        set_axis_labels(ax, 'Million Steps', 'Policy Return', env)
     
-    # Add shared legend on top (like original)
-    handles, labels = axes[0, 0].get_legend_handles_labels()
-    if handles:
-        fig.legend(handles, labels, 
-                  loc='upper center', 
-                  ncol=len(ALGORITHMS), 
-                  bbox_to_anchor=(0.5, 1.05),
-                  fontsize=16,
-                  frameon=True,
-                  fancybox=True,
-                  shadow=True,
-                  columnspacing=1.5,
-                  handletextpad=0.8,
-                  handlelength=2.0)
+    # Add shared legend using centralized function
+    handles, labels = axes[0].get_legend_handles_labels()
+    setup_shared_legend(fig, handles, labels, ncol=len(ALGORITHMS))
     
-    # Layout and save (adjusted for legend space)
+    # Layout and save using centralized function
     plt.subplots_adjust(top=0.85, left=0.06, right=0.94, bottom=0.12, wspace=0.25, hspace=0.3)
-    
-    os.makedirs("./plots/benchmarks", exist_ok=True)
-    plt.savefig("./plots/benchmarks/benchmark.pdf", bbox_inches="tight", dpi=300)
-    plt.savefig("./plots/benchmarks/benchmark.png", bbox_inches="tight", dpi=300)
+    save_publication_figure(fig, "./plots/benchmarks/benchmark")
     plt.show()
     
     print("Benchmark plot saved!")

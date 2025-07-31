@@ -1,21 +1,21 @@
 import argparse
+import copy
 import os
 import random
 import time
-import copy
+from collections import deque
 
 import gymnasium as gym
 import numpy as np
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from torch.distributions.normal import Normal
 from torch.distributions.kl import kl_divergence
+from torch.distributions.normal import Normal
 from jaxrl_m.utils import *
 from jaxrl_m.wandb import setup_wandb
 from jaxrl_m.rollout import rollout_policy_ppo
 import wandb
-from collections import deque
 
 os.environ["WANDB_API_KEY"]="28996bd59f1ba2c5a8c3f2cc23d8673c327ae230"
 
@@ -26,7 +26,7 @@ def parse_args():
     parser.add_argument('--algo_name', type=str, default='trpo', help='the name of the RL algorithm')
     parser.add_argument("--exp_name", type=str, default=os.path.basename(__file__).rstrip(".py"),
         help="the name of this experiment")
-    parser.add_argument("--seed", type=int, default=21,
+    parser.add_argument("--seed", type=int, default=1,
         help="seed of the experiment")
     parser.add_argument("--torch_deterministic", type=str2bool, default=True, nargs="?", const=True,
         help="if toggled, `torch.backends.cudnn.deterministic=False`")
@@ -42,7 +42,7 @@ def parse_args():
         help="whether to capture videos of the agent performances (check out `videos` folder)")
 
     # Algorithm specific arguments
-    parser.add_argument("--env_name", type=str, default="Hopper-v5",
+    parser.add_argument("--env_name", type=str, default="Walker2d-v5",
         help="the id of the environment")
     parser.add_argument("--max_steps", type=int, default=None,
         help="total timesteps of the experiments")
@@ -50,7 +50,7 @@ def parse_args():
         help="the learning rate of the critic optimizer")
     parser.add_argument("--num_envs", type=int, default=1,
         help="the number of parallel game environments")
-    parser.add_argument("--num_steps", type=int, default=5120,
+    parser.add_argument("--num_steps", type=int, default=2048,
         help="the number of steps to run in each environment per policy rollout")
     parser.add_argument("--anneal_lr", type=str2bool, default=True, nargs="?", const=True,
         help="Toggle learning rate annealing for policy and value networks")
@@ -58,9 +58,9 @@ def parse_args():
         help="the discount factor gamma")
     parser.add_argument("--gae_lambda", type=float, default=0.95,
         help="the lambda for the general advantage estimation")
-    parser.add_argument("--num_minibatches", type=int, default=1,
+    parser.add_argument("--num_minibatches", type=int, default=32,
         help="the number of mini-batches")
-    parser.add_argument("--update_epochs", type=int, default=1,
+    parser.add_argument("--update_epochs", type=int, default=10,
         help="the K epochs to update the policy")
     parser.add_argument("--norm_adv", type=str2bool, default=True, nargs="?", const=True,
         help="Toggles advantages normalization")
@@ -81,9 +81,8 @@ def parse_args():
     return args
 
 
-def make_env(env_id, idx, capture_video, run_name, gamma, evaluation=False):
+def make_env(env_name, idx, capture_video, run_name, gamma, evaluation=False):
     def thunk():
-        
         env, eval_env = create_environments(args.env_name)
         # Note: create_environments already applies RecordEpisodeStatistics, so we don't add it again
         env = gym.wrappers.FlattenObservation(env)  # deal with dm_control's Dict observation space
@@ -100,16 +99,18 @@ def make_env(env_id, idx, capture_video, run_name, gamma, evaluation=False):
 
     return thunk
 
+
 def layer_init(layer, std=np.sqrt(2), bias_const=0.0):
     torch.nn.init.orthogonal_(layer.weight, std)
     torch.nn.init.constant_(layer.bias, bias_const)
     return layer
 
+
 def _fisher_vector_product(actor, obs, x, cg_damping=0.1):
     x.detach()
     pi_new = actor(obs)
     with torch.no_grad():
-        pi_old = actor(obs)  
+        pi_old = actor(obs)
     kl = kl_divergence(pi_old, pi_new).mean()
     kl_grads = torch.autograd.grad(kl, tuple(actor.parameters()), create_graph=True)
     flat_kl_grad = torch.cat([grad.view(-1) for grad in kl_grads])
@@ -117,19 +118,19 @@ def _fisher_vector_product(actor, obs, x, cg_damping=0.1):
     kl_hessian_p = torch.autograd.grad(kl_grad_p, tuple(actor.parameters()))
     flat_kl_hessian_p = torch.cat([grad.contiguous().view(-1) for grad in kl_hessian_p])
 
-    # tricks to stablize
+    # tricks to stabilize
     # see https://www2.maths.lth.se/matematiklth/vision/publdb/reports/pdf/byrod-eccv-10.pdf
-    return flat_kl_hessian_p + cg_damping * x 
+    return flat_kl_hessian_p + cg_damping * x
 
 
 # Refer to https://en.wikipedia.org/wiki/Conjugate_gradient_method for more details
-def conjugate_gradient(actor, obs, b, cg_iters, cg_residual_tol=1e-10): 
-    '''
-        Given a linear system Ax = b and an initial guess x0=0, the conjugate gradient method solves the problem
-        Ax = b for x without computing A explicitly. Instead, only the computation of the matrix-vector product Ax is needed.
-        In TRPO, A is the Fisher information matrix F (the second derivates of KL divergence) and b is the gradient of the loss function.
-    '''
-    x = torch.zeros_like(b) 
+def conjugate_gradient(actor, obs, b, cg_iters, cg_residual_tol=1e-10):
+    """
+    Given a linear system Ax = b and an initial guess x0=0, the conjugate gradient method solves the problem
+    Ax = b for x without computing A explicitly. Instead, only the computation of the matrix-vector product Ax is needed.
+    In TRPO, A is the Fisher information matrix F (the second derivates of KL divergence) and b is the gradient of the loss function.
+    """
+    x = torch.zeros_like(b)
     r = b.clone()
     p = b.clone()
     rdotr = torch.dot(r, r)
@@ -151,10 +152,11 @@ def update_model(model, new_params):
     index = 0
     for params in model.parameters():
         params_length = len(params.view(-1))
-        new_param = new_params[index: index + params_length]
+        new_param = new_params[index : index + params_length]
         new_param = new_param.view(params.size())
         params.data.copy_(new_param)
         index += params_length
+
 
 def flat_params(model):
     params = []
@@ -167,12 +169,16 @@ def flat_params(model):
 class Actor(nn.Module):
     def __init__(self, envs):
         super().__init__()
+        hidden_size = 256
+        norm_layer = lambda dim: nn.LayerNorm(dim)
         self.actor_mean = nn.Sequential(
-            layer_init(nn.Linear(np.array(envs.single_observation_space.shape).prod(), 64)),
+            layer_init(nn.Linear(np.array(envs.single_observation_space.shape).prod(), hidden_size)),
+            norm_layer(hidden_size),
             nn.Tanh(),
-            layer_init(nn.Linear(64, 64)),
+            layer_init(nn.Linear(hidden_size, hidden_size)),
+            norm_layer(hidden_size),
             nn.Tanh(),
-            layer_init(nn.Linear(64, np.prod(envs.single_action_space.shape)), std=0.01),
+            layer_init(nn.Linear(hidden_size, np.prod(envs.single_action_space.shape)), std=0.01),
         )
         self.actor_logstd = nn.Parameter(torch.zeros(1, np.prod(envs.single_action_space.shape)))
 
@@ -185,6 +191,11 @@ class Actor(nn.Module):
             action = probs.sample()
         return action, probs.log_prob(action).sum(1), probs.entropy().sum(1)
 
+    def deterministic_action(self, x, action=None):
+        x = torch.Tensor(x).to(0)
+        action_mean = self.actor_mean(x)
+        return action_mean.cpu().detach().numpy()
+
     def forward(self, x):
         action_mean = self.actor_mean(x)
         action_logstd = self.actor_logstd.expand_as(action_mean)
@@ -195,12 +206,16 @@ class Actor(nn.Module):
 class Critic(nn.Module):
     def __init__(self, envs):
         super().__init__()
+        hidden_size = 256
+        norm_layer = lambda dim: nn.LayerNorm(dim)
         self.critic = nn.Sequential(
-            layer_init(nn.Linear(np.array(envs.single_observation_space.shape).prod(), 64)),
+            layer_init(nn.Linear(np.array(envs.single_observation_space.shape).prod(), hidden_size)),
+            norm_layer(hidden_size),
             nn.Tanh(),
-            layer_init(nn.Linear(64, 64)),
+            layer_init(nn.Linear(hidden_size, hidden_size)),
+            norm_layer(hidden_size),
             nn.Tanh(),
-            layer_init(nn.Linear(64, 1), std=1.0),
+            layer_init(nn.Linear(hidden_size, 1), std=1.0),
         )
 
     def get_value(self, x):
@@ -357,12 +372,15 @@ if __name__ == "__main__":
                 optimizer_critic.step()
 
                 # 2. Get the direction of the actor gradient
-                pg_loss = (mb_advantages * ratio).mean() # note 
+                pg_loss = (mb_advantages * ratio).mean()  # note
                 actor.zero_grad()
                 pg_grad = torch.autograd.grad(pg_loss, tuple(actor.parameters()))
                 flat_pg_graid = torch.cat([grad.view(-1) for grad in pg_grad])
                 step_dir = conjugate_gradient(actor, b_obs[mb_inds], flat_pg_graid, cg_iters=10)
-                step_size = torch.sqrt(2 * args.target_kl / (torch.dot(step_dir, _fisher_vector_product(actor, b_obs[mb_inds], step_dir)) + 1e-8))
+                step_size = torch.sqrt(
+                    2 * args.target_kl / (
+                                torch.dot(step_dir, _fisher_vector_product(actor, b_obs[mb_inds], step_dir)) + 1e-8)
+                )
                 step_dir *= step_size
 
                 # 3. Backtracking line search for the learning rate of actor
@@ -371,7 +389,7 @@ if __name__ == "__main__":
                 expected_improve = (flat_pg_graid * step_dir).sum().item()
                 fraction = 1.0
                 for i in range(10):
-                    new_params = params + fraction * step_dir 
+                    new_params = params + fraction * step_dir
                     update_model(actor, new_params)
                     _, newlogprob, entropy = actor.get_action(b_obs[mb_inds], b_actions[mb_inds])
                     logratio = newlogprob - b_logprobs[mb_inds]
@@ -380,14 +398,14 @@ if __name__ == "__main__":
                     loss_improve = new_pg_loss - pg_loss
                     expected_improve *= fraction
                     kl = kl_divergence(old_actor(b_obs[mb_inds]), actor(b_obs[mb_inds])).mean()
-                    if kl < args.target_kl and  loss_improve > 0:
+                    if kl < args.target_kl and loss_improve > 0:
                         break
                     fraction *= 0.5
                 else:
                     update_model(actor, params)
                     fraction = 0.0
                     # print("Not update")
-                actor_lrs.append(fraction) 
+                actor_lrs.append(fraction)
 
             if args.target_kl is not None:
                 if approx_kl > args.target_kl:

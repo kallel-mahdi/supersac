@@ -1,38 +1,8 @@
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
-import seaborn as sns
 
-sns.set_theme()
-
-# Set up matplotlib defaults for consistent plots
-plt.rcParams['figure.figsize'] = (14, 9)  # Larger, better proportioned figure
-plt.rcParams['figure.dpi'] = 150  # Higher resolution for crisp output
-
-# Font sizes - more elegant proportions
-plt.rcParams['font.size'] = 12  # Base font size
-plt.rcParams['axes.titlesize'] = 18  # Plot title
-plt.rcParams['axes.labelsize'] = 15  # Axis labels
-plt.rcParams['xtick.labelsize'] = 13  # X-axis tick labels
-plt.rcParams['ytick.labelsize'] = 12  # Y-axis tick labels
-plt.rcParams['legend.fontsize'] = 12  # Legend text
-
-# Line and marker styles
-plt.rcParams['lines.linewidth'] = 2.5
-plt.rcParams['lines.markersize'] = 8
-
-# Grid settings
-plt.rcParams['axes.grid'] = True
-plt.rcParams['grid.alpha'] = 0.3
-plt.rcParams['grid.linestyle'] = '--'
-
-# Legend settings
-plt.rcParams['legend.frameon'] = True
-plt.rcParams['legend.framealpha'] = 0.8
-plt.rcParams['legend.edgecolor'] = 'gray'
-
-# Save figure settings
-plt.rcParams['savefig.bbox'] = 'tight'
-plt.rcParams['savefig.pad_inches'] = 0.2
+# Import centralized styling
+from style import CUSTOM_PALETTE, apply_spine_styling
 
 import pandas as pd
 import wandb
@@ -83,9 +53,7 @@ OVERLAY_ENVIRONMENT_MEDIANS = True
 # Define the labels for the legend and the categories
 LEGEND_LABELS = ["PPO+", "- Off-policy data", "+ Min target", "- LayerNorm"]
 
-# Define a more vibrant and distinct color palette for better visual appeal
-# Colors: Deep Teal, Warm Orange, Rich Purple, Coral Red
-CUSTOM_PALETTE = ["#2E8B8B", "#FF8C42", "#8E44AD", "#E74C3C"]
+# Colors imported from centralized styling
 
 
 # --- Helper Functions ---
@@ -168,16 +136,15 @@ def aggregate_data_across_environments(configs, metrics, max_step_limit):
     else:
         return aggregated_data
 
-def generate_bias_plot(ax=None, algorithm_colors=None, show_legend=True, title_fontsize=16, label_fontsize=14, y_axis_order=None, fast_test=False):
+def generate_bias_plot(ax=None, algorithm_colors=None, show_legend=True, y_axis_order=None, fast_test=False):
     """
     Generate bias violin plot. Can be used standalone or as part of a combined plot.
+    Font sizes are handled globally by style.py
     
     Args:
         ax: matplotlib axes to plot on (if None, creates new figure)
         algorithm_colors: dict mapping algorithm names to colors
         show_legend: whether to show legend
-        title_fontsize: font size for title
-        label_fontsize: font size for labels
         y_axis_order: list defining the order of algorithms on y-axis
         fast_test: if True, use only 2 environments for faster testing
         
@@ -344,15 +311,15 @@ def generate_bias_plot(ax=None, algorithm_colors=None, show_legend=True, title_f
     
     # --- Enhanced Styling ---
     ax.set_title('Q-Function Bias Distribution', 
-                fontsize=title_fontsize, pad=20, fontweight='bold', color='#2C3E50')
-    ax.set_xlabel('Relative Bias', fontsize=label_fontsize, color='#2C3E50')
+                pad=20, fontweight='bold', color='#2C3E50')
+    ax.set_xlabel('Relative Bias', color='#2C3E50')
     
     # Set y-axis labels for transposed plot
     ax.set_yticks(positions)
     if ax != plt.gca() or not show_legend:  # For combined plots, don't show y-labels (rely on legend)
         ax.set_yticklabels([])
     else:
-        ax.set_yticklabels(violin_labels, fontweight='medium', fontsize=label_fontsize-2)
+        ax.set_yticklabels(violin_labels, fontweight='medium')
     
     # Add vertical line at zero for reference with better styling (changed from horizontal)
     ax.axvline(x=0, color='#7F8C8D', linestyle='-', linewidth=2, alpha=0.8, zorder=1)
@@ -363,11 +330,8 @@ def generate_bias_plot(ax=None, algorithm_colors=None, show_legend=True, title_f
     # Set background color
     ax.set_facecolor('white')
     
-    # Remove top and right spines for cleaner look
-    ax.spines['top'].set_visible(False)
-    ax.spines['right'].set_visible(False)
-    ax.spines['left'].set_color('#7F8C8D')
-    ax.spines['bottom'].set_color('#7F8C8D')
+    # Apply consistent styling using centralized function
+    apply_spine_styling(ax)
     
     # Sample count labels removed for cleaner appearance in combined plots
     

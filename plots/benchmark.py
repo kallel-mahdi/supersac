@@ -23,16 +23,35 @@ TEST_MODE = False
 
 # --- Algorithm Configurations ---
 ALGORITHMS = {
-    "PPO+": {"algo_name": "superppo", "gamma": 0.99, "on_policy_data": False, "temperature": 1., "buffer_size": 50000, "use_layer_norm": True, "clipping_ratio": 0.25, "num_critics": 2, "bound_actions": True, "gae_lambda": 0.5, "min_target": False},
+    "PPO+": {"algo_name": "superppo", "gamma": 0.99, "on_policy_data": False, "temperature": 1., "buffer_size": 50000, 
+             "use_layer_norm": True, "clipping_ratio": 0.25, "num_critics": 2, "bound_actions": True, "gae_lambda": 0.5, 
+             "min_target": False},
     "PPO": {"algo_name": "ppo", "hidden_dims": 64},
-    "PPO(ours)": {"algo_name": "ppo", "hidden_dims":256},
-    "SAC": {"algo_name": "sac"},
-    #"TRPO": {"algo_name": "trpo"}
+    "PPO(ours)": {"algo_name": "ppo", "hidden_dims":256,"update_epochs": 10},
+    "SAC": {"algo_name": "sac","buffer_size": 1e6},
+    "TRPO": {"algo_name": "trpo"},
 }
 
-# --- Environment Settings ---
+# # --- Environment Settings ---
 ENVS = ["InvertedDoublePendulum-v5", "Hopper-v5", "Walker2d-v5", "HalfCheetah-v5", "Ant-v5", "Humanoid-v5"]
 MAX_STEPS = [2e5, 1e6, 1e6, 1e6, 1e6, 5e6]
+
+
+# ENTITY = "mahdikallel"
+# PROJECT = "DMC_DOG"
+# PROJECT_PATH = f"{ENTITY}/{PROJECT}"
+
+# ALGORITHMS = {
+#     "PPO+": {"algo_name": "superppo"},
+#     "PPO": {"algo_name": "ppo", "hidden_dims": 64},
+#     "PPO(ours)": {"algo_name": "ppo", "hidden_dims":256},
+#     "SAC": {"algo_name": "sac"},
+#     "TRPO": {"algo_name": "trpo"},
+# }
+
+# ENVS = ["dog-walk", "dog-trot", "dog-run"]
+# MAX_STEPS = [5e6, 5e6, 5e6]
+
 
 def generate_mock_data():
     """Generate mock data for testing."""
@@ -81,7 +100,12 @@ def fetch_data():
                     if not history.empty:
                         # Process data
                         df = history.dropna()
-                        window = 1 if env == "InvertedDoublePendulum-v5" else 5
+                        if env == "InvertedDoublePendulum-v5":
+                            window = 1
+                        elif "Humanoid" in env or "dog" in env:
+                            window = 5
+                        else:
+                            window = 5
                         df['return'] = df['evaluation/undisc_policy_return'].rolling(window).mean()
                         df['step'] = (df['_step'] // 10000) * 10000
                         df['env'] = env
@@ -106,7 +130,16 @@ def create_benchmark_plot():
         return
     
     # Create plot using utility function
-    fig, axes = create_publication_ready_figure(figsize=(24, 12), nrows=2, ncols=3)
+    # Use 1 row for 3 environments, 2 rows for 6 environments
+    nrows = 1 if len(ENVS) <= 3 else 2
+    
+    # Better figsize for 3 plots: reduce height by ~2x compared to 6 plots
+    if len(ENVS) <= 3:
+        figsize = (24, 6)  # Reduced height from 12 to 6 (divided by 2)
+    else:
+        figsize = (24, 12)
+    
+    fig, axes = create_publication_ready_figure(figsize=figsize, nrows=nrows, ncols=3)
     
     for ax, env, max_step in zip(axes, ENVS, MAX_STEPS):
         for algo in ALGORITHMS:
@@ -131,13 +164,40 @@ def create_benchmark_plot():
         
         # Set axis labels using utility function
         set_axis_labels(ax, 'Million Steps', 'Policy Return', env)
+        
+        # Enable grid for each subplot
+        ax.grid(True, alpha=0.3, linestyle='--', color='#BDC3C7', zorder=0)
     
-    # Add shared legend using centralized function
-    handles, labels = axes[0].get_legend_handles_labels()
-    setup_shared_legend(fig, handles, labels, ncol=len(ALGORITHMS))
+    # Add shared legend using the existing style function
+    # Use the first axis for legend handles if only one row, otherwise use the middle row
+    legend_ax = axes[0] if len(ENVS) <= 3 else axes[1]
+    handles, labels = legend_ax.get_legend_handles_labels()
+    if handles:  # Only create legend if there are handles
+        # Use standard legend positioning (same as master_combined_plot_simple.py)
+        setup_shared_legend(fig, handles, labels, ncol=len(ALGORITHMS))
     
-    # Layout and save using centralized function
-    plt.subplots_adjust(top=0.85, left=0.06, right=0.94, bottom=0.12, wspace=0.25, hspace=0.3)
+    # Adjusted layout for better legend positioning
+    if len(ENVS) <= 3:
+        # For 3 plots: much more space at top for legend
+        plt.subplots_adjust(
+            top=0.85,      # Reduced from 0.95 to 0.85 to give more space for legend
+            left=0.06, 
+            right=0.94, 
+            bottom=0.15,    
+            wspace=0.25, 
+            hspace=0.3
+        )
+    else:
+        # For 6 plots: keep original spacing
+        plt.subplots_adjust(
+            top=0.88, 
+            left=0.06, 
+            right=0.94, 
+            bottom=0.12, 
+            wspace=0.25, 
+            hspace=0.3
+        )
+    
     save_publication_figure(fig, "./plots/benchmarks/benchmark")
     plt.show()
     

@@ -1,0 +1,106 @@
+_wandb:
+    value:
+        cli_version: 0.21.0
+        e:
+            s18phyis0tcabdjgszsbouya9zvgka1i:
+                codePath: plots/PLOTS.ipynb
+                codePathLocal: PLOTS.ipynb
+                cpu_count: 16
+                cpu_count_logical: 32
+                cudaVersion: "12.5"
+                disk:
+                    /:
+                        total: "982820896768"
+                        used: "375441154048"
+                email: kallel@eurecom.fr
+                executable: /home/mahdi/Desktop/supersac/.venv_jax/bin/python
+                git:
+                    commit: 8f3bff1da718025d199dfadf818ccd7d920ebcf6
+                    remote: https://github.com/kallel-mahdi/supersac
+                gpu: NVIDIA GeForce RTX 4090
+                gpu_count: 1
+                gpu_nvidia:
+                    - architecture: Ada
+                      cudaCores: 16384
+                      memoryTotal: "25757220864"
+                      name: NVIDIA GeForce RTX 4090
+                      uuid: GPU-69f55b9a-f421-76d7-a34a-cb190f1ff202
+                host: mahdi-X670E-Pro-RS
+                memory:
+                    total: "66484998144"
+                os: Linux-6.8.0-60-generic-x86_64-with-glibc2.35
+                program: /home/mahdi/Desktop/supersac/plots/PLOTS.ipynb
+                python: CPython 3.12.0
+                root: /home/mahdi/Desktop/supersac/plots
+                startedAt: "2025-08-01T12:45:58.370186Z"
+                writerId: s18phyis0tcabdjgszsbouya9zvgka1i
+        m: []
+        python_version: 3.12.0
+        t:
+            "3":
+                - 2
+                - 13
+                - 16
+                - 61
+            "4": 3.12.0
+            "5": 0.21.0
+            "8":
+                - 1
+            "10":
+                - 20
+            "12": 0.21.0
+            "13": linux-x86_64
+algo_name:
+    value: trpo
+anneal_lr:
+    value: true
+batch_size:
+    value: 5120
+capture_video:
+    value: false
+clip_coef:
+    value: 0.2
+clip_vloss:
+    value: true
+cuda:
+    value: true
+env_name:
+    value: dog-run
+exp_name:
+    value: main
+gae_lambda:
+    value: 0.95
+gamma:
+    value: 0.99
+learning_rate:
+    value: 0.0003
+max_grad_norm:
+    value: 0.5
+minibatch_size:
+    value: 160
+norm_adv:
+    value: true
+num_envs:
+    value: 1
+num_minibatches:
+    value: 32
+num_steps:
+    value: 5120
+seed:
+    value: 1
+target_kl:
+    value: 0.01
+torch_deterministic:
+    value: true
+total_timesteps:
+    value: 5000000
+track:
+    value: true
+update_epochs:
+    value: 10
+vf_coef:
+    value: 0.5
+wandb_entity:
+    value: ""
+wandb_project_name:
+    value: dog_run

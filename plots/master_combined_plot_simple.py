@@ -28,7 +28,7 @@ cosine_spec.loader.exec_module(cosine_module)
 generate_cosine_plot = cosine_module.generate_cosine_plot
 
 # === FAST TEST MODE ===
-FAST_TEST = True  # Use only 2 environments for faster testing
+FAST_TEST = False  # Use only 2 environments for faster testing
 
 # === GLOBAL Y-AXIS ORDER (Consistent across all plots) ===
 GLOBAL_Y_AXIS_ORDER = [

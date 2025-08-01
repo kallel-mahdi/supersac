@@ -85,13 +85,6 @@ parser.add_argument('--hidden_dims', type=int, default=256, help='the hidden dim
 parser.add_argument('--use_layer_norm',type=str2bool, default=True, help='Toggle to use layer norm in the policy/value networks')
 
 args = parser.parse_args()
-args.batch_size = int(args.num_envs * args.num_steps)
-args.minibatch_size = int(args.batch_size // args.num_minibatches)
-args.num_iterations = args.max_steps // args.batch_size
-
-
-
-args = parser.parse_args()
 
 print(args.full_batch)
 

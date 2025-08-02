@@ -49,8 +49,8 @@ MAX_STEPS = [2e5, 1e6, 1e6, 1e6, 1e6, 5e6]
 #     "TRPO": {"algo_name": "trpo"},
 # }
 
-# ENVS = ["dog-walk", "dog-trot", "dog-run"]
-# MAX_STEPS = [5e6, 5e6, 5e6]
+# ENVS = ["dog-stand", "dog-walk", "dog-trot", "dog-run"]
+# MAX_STEPS = [5e6,5e6, 5e6, 5e6]
 
 
 def generate_mock_data():
@@ -130,16 +130,18 @@ def create_benchmark_plot():
         return
     
     # Create plot using utility function
-    # Use 1 row for 3 environments, 2 rows for 6 environments
-    nrows = 1 if len(ENVS) <= 3 else 2
+    # Use 1 row for 4 environments, 2 rows for 6+ environments
+    nrows = 1 if len(ENVS) <= 4 else 2
+    ncols = 4 if len(ENVS) <= 4 else 3  # 4 columns for 4 plots, 3 columns for 6+ plots
     
-    # Better figsize for 3 plots: reduce height by ~2x compared to 6 plots
-    if len(ENVS) <= 3:
-        figsize = (24, 6)  # Reduced height from 12 to 6 (divided by 2)
+    # Better figsize for 4 plots: adjust width and height
+    if len(ENVS) <= 4:
+        figsize = (24, 6)  # Wider figure for 4 plots side by side
     else:
         figsize = (24, 12)
     
-    fig, axes = create_publication_ready_figure(figsize=figsize, nrows=nrows, ncols=3)
+    fig, axes = create_publication_ready_figure(figsize=figsize, nrows=nrows, ncols=ncols)
+    
     
     for ax, env, max_step in zip(axes, ENVS, MAX_STEPS):
         for algo in ALGORITHMS:
@@ -155,7 +157,7 @@ def create_benchmark_plot():
             grouped = env_data.groupby('step')['return']
             x = grouped.mean().index / 1e6
             mean = grouped.mean()
-            std = grouped.std() / np.sqrt(grouped.count())
+            std = 2 * grouped.std() / np.sqrt(grouped.count())
             
             # Plot
             color = ALGORITHM_COLORS.get(algo, 'gray')
@@ -170,25 +172,26 @@ def create_benchmark_plot():
     
     # Add shared legend using the existing style function
     # Use the first axis for legend handles if only one row, otherwise use the middle row
-    legend_ax = axes[0] if len(ENVS) <= 3 else axes[1]
+    legend_ax = axes[0] if len(ENVS) <= 4 else axes[1]
     handles, labels = legend_ax.get_legend_handles_labels()
     if handles:  # Only create legend if there are handles
-        # Use standard legend positioning (same as master_combined_plot_simple.py)
-        setup_shared_legend(fig, handles, labels, ncol=len(ALGORITHMS))
+        # Use standard legend positioning with custom height for 4-plot case
+        bbox_y = 1.08 if len(ENVS) <= 4 else 1.02  # Higher for 4 plots, standard for others
+        setup_shared_legend(fig, handles, labels, ncol=len(ALGORITHMS), bbox_y=bbox_y)
     
     # Adjusted layout for better legend positioning
-    if len(ENVS) <= 3:
-        # For 3 plots: much more space at top for legend
+    if len(ENVS) <= 4:
+        # For 4 plots: adjust spacing for wider layout
         plt.subplots_adjust(
-            top=0.85,      # Reduced from 0.95 to 0.85 to give more space for legend
-            left=0.06, 
-            right=0.94, 
+            top=0.85,      # Space for legend
+            left=0.04,     # Slightly less left margin for wider layout
+            right=0.96,    # Slightly less right margin for wider layout
             bottom=0.15,    
-            wspace=0.25, 
+            wspace=0.2,    # Slightly less space between plots for 4 plots
             hspace=0.3
         )
     else:
-        # For 6 plots: keep original spacing
+        # For 6+ plots: keep original spacing
         plt.subplots_adjust(
             top=0.88, 
             left=0.06, 

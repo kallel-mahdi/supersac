@@ -310,8 +310,10 @@ def generate_bias_plot(ax=None, algorithm_colors=None, show_legend=True, y_axis_
         )
     
     # --- Enhanced Styling ---
-    ax.set_title('Q-Function Bias Distribution', 
-                pad=20, fontweight='bold', color='#2C3E50')
+    # Only set title if this is a standalone plot (not combined)
+    if ax == plt.gca() or ax is None:
+        ax.set_title('Q-Function Bias Distribution', 
+                    pad=20, fontweight='bold', color='#2C3E50')
     ax.set_xlabel('Relative Bias', color='#2C3E50')
     
     # Set y-axis labels for transposed plot

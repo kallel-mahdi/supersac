@@ -40,11 +40,18 @@ GLOBAL_Y_AXIS_ORDER = [
     "- Entropy"            # Only in ablation
 ]
 
+# === PLOT TITLES FOR SCIENTIFIC CONFERENCE ===
+PLOT_TITLES = {
+    "ablation": "A) Loss in policy return",
+    "cosine": "B) Quality of the policy gradient", 
+    "bias": "C) Quality of the Q-estimator"
+}
+
 def create_combined_plot():
     """Create the combined three-panel plot with shared legend."""
     
     # Create figure with 3 subplots using utility function
-    fig, (ax1, ax2, ax3) = create_publication_ready_figure(figsize=(21, 7), nrows=1, ncols=3)
+    fig, (ax1, ax2, ax3) = create_publication_ready_figure(figsize=(24,6), nrows=1, ncols=3)
     
     print("Generating combined plot...")
     print("=" * 50)
@@ -60,6 +67,9 @@ def create_combined_plot():
     )
     print(f"   Ablation algorithms: {algorithms_ablation}")
     
+    # Set title for ablation plot (A)
+    ax1.set_title(PLOT_TITLES["ablation"], pad=20, fontweight='bold', color='#2C3E50')
+    
     print("\n2. Generating cosine similarity plot...")
     algorithms_cosine = generate_cosine_plot(
         ax=ax2, 
@@ -70,6 +80,9 @@ def create_combined_plot():
     )
     print(f"   Cosine algorithms: {algorithms_cosine}")
     
+    # Set title for cosine plot (B)
+    ax2.set_title(PLOT_TITLES["cosine"], pad=20, fontweight='bold', color='#2C3E50')
+    
     print("\n3. Generating bias violin plot...")
     algorithms_bias = generate_bias_plot(
         ax=ax3, 
@@ -79,6 +92,9 @@ def create_combined_plot():
         fast_test=FAST_TEST
     )
     print(f"   Bias algorithms: {algorithms_bias}")
+    
+    # Set title for bias plot (C)
+    ax3.set_title(PLOT_TITLES["bias"], pad=20, fontweight='bold', color='#2C3E50')
     
     # Collect all unique algorithms across all plots
     all_algorithms = set()
@@ -92,7 +108,9 @@ def create_combined_plot():
     legend_elements = create_shared_legend_from_algorithms(
         fig, 
         [algo for algo in GLOBAL_Y_AXIS_ORDER if algo in all_algorithms], 
-        ALGORITHM_COLORS
+        ALGORITHM_COLORS,
+        y_pos = 1.08
+        
     )
     print(f"Created shared legend with {len(legend_elements)} algorithms")
     

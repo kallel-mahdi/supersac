@@ -21,12 +21,12 @@ PLOT_PARAMS = {
     "savefig.pad_inches": 0.2,    # Your original padding
     
     # Font sizes - exactly as you had them
-    "font.size": 14,              # Base font size (your original)
-    "axes.titlesize": 22,         # Plot title (your original)  
+    "font.size": 18,              # Base font size (your original)
+    "axes.titlesize": 24,         # Plot title (your original)  
     "axes.labelsize": 18,         # Axis labels (your original)
-    "xtick.labelsize": 14,        # X-axis tick labels (your original)
-    "ytick.labelsize": 14,        # Y-axis tick labels (your original)  
-    "legend.fontsize": 18,        # Legend text (your original)
+    "xtick.labelsize": 18,        # X-axis tick labels (your original)
+    "ytick.labelsize": 18,        # Y-axis tick labels (your original)  
+    "legend.fontsize": 24, #OG18       # Legend text (your original)
     
     # Line and marker styles
     "lines.linewidth": 2.5,       # Your original
@@ -48,6 +48,31 @@ PLOT_PARAMS = {
     "axes.spines.right": False,
 }
 
+# === LaTeX Configuration ===
+# Enable LaTeX rendering for proper mathematical symbols
+try:
+    plt.rcParams.update({
+        "text.usetex": True,
+        "font.family": "serif",
+        "font.serif": ["Computer Modern Roman"],
+        "text.latex.preamble": r"\usepackage{amsmath} \usepackage{amssymb}"
+    })
+    print("✅ LaTeX rendering enabled")
+except Exception as e:
+    print(f"⚠️  LaTeX rendering failed: {e}")
+    print("   Falling back to Unicode symbols")
+    # Fallback to Unicode symbols if LaTeX fails
+    plt.rcParams.update({
+        "text.usetex": False,
+        "font.family": "DejaVu Sans"
+    })
+else:
+    # If LaTeX is not available, use Unicode symbols
+    plt.rcParams.update({
+        "text.usetex": False,
+        "font.family": "DejaVu Sans"
+    })
+
 # === Apply the configuration ===
 plt.rcParams.update(PLOT_PARAMS)
 
@@ -63,7 +88,14 @@ ALGORITHM_COLORS = {
     "PPO": "#8E44AD",               # Rich Purple
     "PPO(ours)": "#FF8C42",         # Warm Orange  
     "SAC": "#E74C3C",               # Coral Red
-    "TRPO": "#3498DB"               # Bright Blue
+    "TRPO": "#3498DB",              # Bright Blue
+    # Add colors for lambda ablations
+    "λ=0": "#E74C3C",               # Coral Red
+    "λ=0.5": "#3498DB",             # Bright Blue  
+    "λ=0.7": "#F1C40F",             # Pure Yellow
+    # Add colors for norm ablations
+    "-Obs norm": "#FF8C42",         # Warm Orange
+    "-Reward norm": "#2E8B8B",      # Deep Teal
 }
 
 # Custom vibrant palette for violin plots etc.
@@ -101,7 +133,7 @@ def create_publication_ready_figure(figsize=(10, 6), nrows=1, ncols=1):
     
     return fig, axes
 
-def create_shared_legend_from_algorithms(fig, algorithms, algorithm_colors, ncol=None):
+def create_shared_legend_from_algorithms(fig, algorithms, algorithm_colors,y_pos=1.02, ncol=None):
     """Create a shared legend from algorithm names and colors."""
     import matplotlib.patches as mpatches
     
@@ -118,9 +150,9 @@ def create_shared_legend_from_algorithms(fig, algorithms, algorithm_colors, ncol
         
         fig.legend(handles=legend_elements, 
                   loc='upper center', 
-                  bbox_to_anchor=(0.5, 1.02),
+                  bbox_to_anchor=(0.5, y_pos),
                   ncol=ncol,
-                  fontsize=18,
+                  fontsize=plt.rcParams['legend.fontsize'],  # Use global setting
                   frameon=True,
                   fancybox=True,
                   shadow=True,
@@ -133,7 +165,7 @@ def create_shared_legend_from_algorithms(fig, algorithms, algorithm_colors, ncol
     
     return legend_elements
 
-def setup_shared_legend(fig, handles, labels, ncol=None):
+def setup_shared_legend(fig, handles, labels, ncol=None,font_size=None, bbox_y=1.02):
     """Create a professionally styled shared legend with white background."""
     if not handles:
         return
@@ -144,9 +176,9 @@ def setup_shared_legend(fig, handles, labels, ncol=None):
     return fig.legend(
         handles, labels,
         loc='upper center',
-        bbox_to_anchor=(0.5, 1.02),
+        bbox_to_anchor=(0.5, bbox_y),  # Customizable y-position with good default
         ncol=ncol,
-        fontsize=18,  # From global style.py
+        fontsize=plt.rcParams['legend.fontsize'] if font_size is None else font_size,  # Use global setting
         frameon=True,
         fancybox=True,
         shadow=True,
@@ -173,10 +205,10 @@ def save_publication_figure(fig, path_without_extension):
 
 def set_axis_labels(ax, xlabel, ylabel, title=None):
     """Set axis labels with consistent styling."""
-    ax.set_xlabel(xlabel, fontsize=18)  # From your style
-    ax.set_ylabel(ylabel, fontsize=18)
+    ax.set_xlabel(xlabel, fontsize=plt.rcParams['axes.labelsize'])  # Use global setting
+    ax.set_ylabel(ylabel, fontsize=plt.rcParams['axes.labelsize'])  # Use global setting
     if title:
-        ax.set_title(title, fontsize=22)  # From your style
+        ax.set_title(title, fontsize=plt.rcParams['axes.titlesize'])  # Use global setting
 
 print("✅ Plot styling configured with your preferred Seaborn + font settings")
 print("   Clean white background, no gray, readable fonts for conferences")

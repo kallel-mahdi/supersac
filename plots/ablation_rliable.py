@@ -234,7 +234,9 @@ def generate_ablation_plot(ax=None, algorithm_colors=None, show_legend=True, y_a
         ax.set_xlabel('Percent Loss', color='#2C3E50')
     
     # Customize the plot
-    ax.set_title('Ablations on PPO+', pad=20, fontweight='bold', color='#2C3E50')
+    # Only set title if this is a standalone plot (not combined)
+    if ax == plt.gca() or ax is None:
+        ax.set_title('Ablations on PPO+', pad=20, fontweight='bold', color='#2C3E50')
     ax.axvline(0, color='black', linestyle='--', lw=1)
     ax.grid(True, alpha=0.3, linestyle='--', color='#BDC3C7', zorder=0)
     ax.set_facecolor('white')

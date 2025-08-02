@@ -361,8 +361,8 @@ if __name__ == "__main__":
     
             unlogged_steps = 0
            
-            
-            eval_env.envs[0].env.obs_rms = envs.envs[0].env.env.env.obs_rms 
+            if args.normalize_observation:
+                eval_env.envs[0].env.obs_rms = envs.envs[0].env.env.env.obs_rms 
 
             undisc_policy_return = rollout_policy_ppo(
                                                                     agent,env = eval_env,

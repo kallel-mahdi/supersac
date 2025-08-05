@@ -8,25 +8,24 @@ import seaborn as sns
 
 # === Apply Seaborn Base Style ===
 sns.set_theme(style="whitegrid")  # Clean white background with subtle grid
-sns.set(font_scale=1.3)       # Your original scale
 
 # === Your Preferred Font Configuration ===
 # Based on your original PLOTS.ipynb settings
 PLOT_PARAMS = {
     # Figure settings
-    "figure.figsize": (10, 6),    # Your original standard size
+    "figure.figsize": (24, 12),   # Good size for 2x3 grid
     "figure.dpi": 150,            # Higher resolution for crisp output
     "figure.facecolor": "white",
     "savefig.bbox": "tight",
     "savefig.pad_inches": 0.2,    # Your original padding
     
-    # Font sizes - exactly as you had them
-    "font.size": 18,              # Base font size (your original)
-    "axes.titlesize": 24,         # Plot title (your original)  
-    "axes.labelsize": 18,         # Axis labels (your original)
-    "xtick.labelsize": 18,        # X-axis tick labels (your original)
-    "ytick.labelsize": 18,        # Y-axis tick labels (your original)  
-    "legend.fontsize": 24, #OG18       # Legend text (your original)
+    # Font sizes for scientific plots (2x3 grid)
+    "font.size": 18,              # Base font size
+    "axes.titlesize": 22,         # Subplot title
+    "axes.labelsize": 20,         # X/Y axis labels
+    "xtick.labelsize": 18,        # X-axis tick labels
+    "ytick.labelsize": 18,        # Y-axis tick labels
+    "legend.fontsize": 24,        # Legend text
     
     # Line and marker styles
     "lines.linewidth": 2.5,       # Your original
@@ -89,10 +88,6 @@ ALGORITHM_COLORS = {
     "PPO(ours)": "#FF8C42",         # Warm Orange  
     "SAC": "#E74C3C",               # Coral Red
     "TRPO": "#3498DB",              # Bright Blue
-    # Add colors for lambda ablations
-    "λ=0": "#E74C3C",               # Coral Red
-    "λ=0.5": "#3498DB",             # Bright Blue  
-    "λ=0.7": "#F1C40F",             # Pure Yellow
     # Add colors for norm ablations
     "-Obs norm": "#FF8C42",         # Warm Orange
     "-Reward norm": "#2E8B8B",      # Deep Teal
@@ -112,17 +107,19 @@ def apply_spine_styling(ax):
     ax.xaxis.label.set_color('#2C3E50')
     ax.yaxis.label.set_color('#2C3E50')
 
-def create_publication_ready_figure(figsize=(10, 6), nrows=1, ncols=1):
+def create_publication_ready_figure(figsize=None, nrows=1, ncols=1):
     """Create a figure with publication-ready settings and white background."""
+    # Use default figsize from rcParams if not provided
+    if figsize is None:
+        figsize = plt.rcParams['figure.figsize']
+        
     fig, axes = plt.subplots(nrows, ncols, figsize=figsize)
     fig.patch.set_facecolor('white')
     fig.set_facecolor('white')
     
     # Handle single axis case
-    if nrows == 1 and ncols == 1:
+    if nrows * ncols == 1:
         axes = [axes]
-    elif nrows == 1 or ncols == 1:
-        axes = axes.flatten()
     else:
         axes = axes.flatten()
     

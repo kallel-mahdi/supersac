@@ -2,134 +2,137 @@ import pandas as pd
 import wandb
 import os
 import numpy as np
-import itertools
 import matplotlib.pyplot as plt
 import seaborn as sns
 
-os.makedirs("/home/mahdi/Desktop/supersac/notebooks/plots/ablations_tmlr/", exist_ok=True)
-sns.set_theme()
+# Import centralized styling and utilities
+from style import (
+    create_publication_ready_figure,
+    set_axis_labels,
+    save_publication_figure
+)
 
-# Set up matplotlib defaults for consistent plots
-plt.rcParams['figure.figsize'] = (10, 6)  # Standard figure size
-plt.rcParams['figure.dpi'] = 100  # Standard resolution
+# --- Configuration ---
+ENTITY = "mahdikallel"
+PROJECT = "GAE_LAMBDA2"
+PROJECT_PATH = f"{ENTITY}/{PROJECT}"
+TEST_MODE = False
+N_RUNS = 5
 
-# Font sizes
-plt.rcParams['font.size'] = 14  # Base font size
-plt.rcParams['axes.titlesize'] = 22  # Plot title
-plt.rcParams['axes.labelsize'] = 18  # Axis labels
-plt.rcParams['xtick.labelsize'] = 14  # X-axis tick labels
-plt.rcParams['ytick.labelsize'] = 14  # Y-axis tick labels
-plt.rcParams['legend.fontsize'] = 18  # Legend text
 
-# Line and marker styles
-plt.rcParams['lines.linewidth'] = 2.5
-plt.rcParams['lines.markersize'] = 8
-
-# Grid settings
-plt.rcParams['axes.grid'] = True
-plt.rcParams['grid.alpha'] = 0.3
-plt.rcParams['grid.linestyle'] = '--'
-
-# Legend settings
-plt.rcParams['legend.frameon'] = True
-plt.rcParams['legend.framealpha'] = 0.8
-plt.rcParams['legend.edgecolor'] = 'gray'
-
-# Save figure settings
-plt.rcParams['savefig.bbox'] = 'tight'
-plt.rcParams['savefig.pad_inches'] = 0.2
-
-os.environ["WANDB_API_KEY"]="28996bd59f1ba2c5a8c3f2cc23d8673c327ae230"
-api = wandb.Api()
-entity= "mahdikallel"
-
-def filter_fn(run, env_name, filter_dict):
-    if run.config["env_name"]==env_name:
-        for key, value in filter_dict.items():
-            if key not in run.config or run.config[key] != value:
-                return False
-        return True
-    return False
-
-# Define your two different dc dictionaries
-dc1 = { 
-    "PPO (Lambda=0.95)":{"algo_name":"ppo","gamma":0.99,"gae_lambda":0.95},
-    "PPO (Lambda=0.7)":{"algo_name":"ppo","gamma":0.99,"gae_lambda":0.7},
-    "PPO (Lambda=0.5)":{"algo_name":"ppo","gamma":0.99,"gae_lambda":0.5},
-    "PPO (Lambda=0.0)":{"algo_name":"ppo","gamma":0.99,"gae_lambda":0.0},
+DEFAULT_PPO_CONFIG = {
+    "algo_name": "ppo",
+    "gamma": 0.99,
+    "norm_adv": True,
+    "normalize_observation": True,
+    "normalize_reward": True,
+    "anneal_lr": True,
 }
 
-dc2 = { 
-    # Your second set of configurations
-    "PPO+ (Lambda=0.95)":{"algo_name":"superppo","gamma":0.99,"gae_lambda":0.95,"on_policy_data":False},
-    "PPO+ (Lambda=0.7)":{"algo_name":"superppo","gamma":0.99,"gae_lambda":0.7,"on_policy_data":False},
-    "PPO+ (Lambda=0.5)":{"algo_name":"superppo","gamma":0.99,"gae_lambda":0.5,"on_policy_data":False},
-    "PPO+ (Lambda=0.0)":{"algo_name":"superppo","gamma":0.99,"gae_lambda":0.0,"on_policy_data":False},
+DEFAULT_PPO_PLUS_CONFIG = {
+    "algo_name": "superppo",
+    "gamma": 0.99,
+    "on_policy_data": False,
 }
 
-env_names = ["Hopper-v5","Walker2d-v5","HalfCheetah-v5"]
-max_steps = [1e6,1e6,1e6]
+# --- Algorithm Configurations ---
+lambdas = [0.95, 0.7, 0.5, 0.0]
+ALGO_CONFIGS = {
+    "Regular PPO": {
+        f"λ={l}": {**DEFAULT_PPO_CONFIG, "gae_lambda": l} for l in lambdas
+    },
+    "PPO+": {
+        f"λ={l}": {**DEFAULT_PPO_PLUS_CONFIG, "gae_lambda": l} for l in lambdas
+    }
+}
 
-# Create 2 rows x 3 columns subplot
-fig, axs = plt.subplots(2, 3, figsize=(24, 12))
 
-# Function to plot data for a given dc and row of axes
-def plot_dc_data(dc, axes_row, row_title):
-    for ax, env_name, max_step in zip(axes_row, env_names, max_steps):
-        # Reset the runs chain for each environment
-        runs = api.runs(entity + "/" + "GAE_LAMBDA_ABLATIONS")
-        
-        for algo in dc.keys():
-            print(f"{row_title} - {algo}, {env_name}")
+ENV_CONFIG = {
+    "env_names": ["Hopper-v5", "Walker2d-v5", "HalfCheetah-v5"],
+    "max_steps": [1e6, 1e6, 1e6]
+}
+
+# --- Data Fetching ---
+def fetch_data_for_group(algo_group_config, env_names, n_runs):
+    """Fetch data from W&B for a group of algorithms, limited to the most recent n_runs."""
+    api = wandb.Api()
+    
+    all_data = {}
+    for algo_name, config in algo_group_config.items():
+        algo_runs_data = []
+        for env_name in env_names:
+            filters = {"config.env_name": env_name, **{f"config.{k}": v for k, v in config.items()}}
             
-            df = pd.DataFrame()
-            config_list, name_list, run_list = [], [], []
-            for run in runs:
-                if filter_fn(run, env_name, dc[algo]):
-                    config_list.append({k: v for k, v in run.config.items() if not k.startswith("_")})
-                    name_list.append(run.name)
-                    full_df = run.history(samples=10000)
-                    tmp_df = full_df[['evaluation/undisc_policy_return', '_step']].dropna(axis=0)
-                    tmp_df["average return"] = tmp_df['evaluation/undisc_policy_return'].rolling(window=5).mean()
-                    tmp_df['step'] = np.round(tmp_df['_step'] / 10000) * 10000
-                    tmp_df = tmp_df[["step", "average return"]]
-                    df = pd.concat([df, tmp_df], ignore_index=True)
-                    print(run.name)
+            try:
+                runs = api.runs(PROJECT_PATH, filters=filters)
+                for i, run in enumerate(runs):
+                    if i >= n_runs:
+                        break
                     
-            if not df.empty:
-                df2 = df[df["step"] < int(max_step)]
-                x = df2.groupby("step")["step"].mean() / 1e6
-                mean = df2.groupby("step")["average return"].mean()
-                stderror = df2.groupby("step")["average return"].std() / np.sqrt(df2.groupby("step")["average return"].count())
-                
-                ax.plot(x, mean, label=algo, linewidth=3)
-                ax.fill_between(x, mean - stderror, mean + stderror, alpha=0.3)
+                    history = run.history(keys=['evaluation/undisc_policy_return', '_step'], pandas=True).dropna()
+                    if not history.empty:
+                        df = history.copy()
+                        df['average return'] = df['evaluation/undisc_policy_return'].rolling(window=5).mean()
+                        df['step'] = np.round(df['_step'] / 10000) * 10000
+                        df['env'] = env_name
+                        df['algo'] = algo_name
+                        algo_runs_data.append(df[['step', 'average return', 'env', 'algo']])
+            except Exception as e:
+                print(f"Error fetching data for {algo_name} in {env_name}: {e}")
+                continue
+
+        if algo_runs_data:
+            all_data[algo_name] = pd.concat(algo_runs_data, ignore_index=True)
             
-        ax.set_xlabel('Million Steps')
-        ax.set_ylabel('Policy Return')
-        ax.set_title(f"{env_name}")
+    return all_data
 
-# Plot first dc on first row
-plot_dc_data(dc1, axs[0], "Regular PPO")
+# --- Plotting ---
+def plot_ablation_grid():
+    """Create a 2x3 grid of ablation plots using default styling."""
+    os.environ["WANDB_API_KEY"] = "28996bd59f1ba2c5a8c3f2cc23d8673c327ae230"
+    
+    fig, axes = create_publication_ready_figure(nrows=2, ncols=3)
+    
+    env_names = ENV_CONFIG["env_names"]
+    max_steps = ENV_CONFIG["max_steps"]
+    palette = sns.color_palette()
 
-# Plot second dc on second row  
-plot_dc_data(dc2, axs[1], "PPO+")
+    for row_idx, (group_title, algo_group) in enumerate(ALGO_CONFIGS.items()):
+        data_group = fetch_data_for_group(algo_group, env_names, n_runs=N_RUNS)
+        
+        for col_idx, (env_name, max_step) in enumerate(zip(env_names, max_steps)):
+            ax_idx = row_idx * 3 + col_idx
+            ax = axes[ax_idx]
+            
+            for i, (algo, data) in enumerate(data_group.items()):
+                env_data = data[data['env'] == env_name]
+                env_data = env_data[env_data['step'] < max_step]
 
-# Add row titles
-fig.text(0.02, 0.75, 'Regular PPO', rotation=90, fontsize=20, va='center', ha='center')
-fig.text(0.02, 0.25, 'PPO+', rotation=90, fontsize=20, va='center', ha='center')
+                if not env_data.empty:
+                    grouped = env_data.groupby('step')['average return']
+                    x = grouped.mean().index / 1e6
+                    mean = grouped.mean()
+                    std_err = grouped.std() / np.sqrt(grouped.count())
+                    color = palette[i % len(palette)]
+                    
+                    ax.plot(x, mean, label=algo, color=color)
+                    ax.fill_between(x, mean - std_err, mean + std_err, color=color, alpha=0.2)
 
-# Create separate legends for each row
-handles1, labels1 = axs[0, 0].get_legend_handles_labels()
-handles2, labels2 = axs[1, 0].get_legend_handles_labels()
+            set_axis_labels(ax, 'Million Steps', 'Policy Return', title=env_name)
+            ax.grid(True, alpha=0.3, linestyle='--')
+            
+        fig.text(0.02, 0.75 if row_idx == 0 else 0.25, group_title, rotation=90, 
+                 fontsize=22, va='center', ha='center')
+        
+    handles, labels = axes[0].get_legend_handles_labels()
+    if handles:
+        fig.legend(handles, labels, loc='upper center', ncol=len(ALGO_CONFIGS["Regular PPO"]),
+                   bbox_to_anchor=(0.5, 0.98))
 
-# Place legends
-fig.legend(handles1, labels1, loc='upper center', ncol=len(dc1.keys()), 
-           bbox_to_anchor=(0.5, 0.95), title="Regular PPO")
-fig.legend(handles2, labels2, loc='upper center', ncol=len(dc2.keys()), 
-           bbox_to_anchor=(0.5, 0.48), title="PPO+")
+    plt.tight_layout(rect=[0.05, 0.05, 0.95, 0.92])
+    save_publication_figure(fig, "/home/mahdi/Desktop/supersac/notebooks/plots/ablations_tmlr/gae_lambda_ablations_final")
+    plt.show()
+    print("Ablation plot with single shared legend saved!")
 
-plt.tight_layout(rect=[0.03, 0, 1, 0.9])
-plt.savefig("/home/mahdi/Desktop/supersac/notebooks/plots/ablations_tmlr/gae_lambda_ablations_comparison.pdf", 
-            format="pdf", bbox_inches="tight")
-plt.show()
+if __name__ == "__main__":
+    plot_ablation_grid()

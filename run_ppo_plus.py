@@ -71,7 +71,7 @@ parser.add_argument('--num_critic_updates',type=int,default=5000)
 parser.add_argument('--activation_fn',type=str,default='tanh')
 parser.add_argument('--stable_scheme',type=str2bool,default=True)
 parser.add_argument('--bound_actions',type=str2bool,default=True)
-parser.add_argument('--intertwine_updates',type=str2bool,default=False)
+parser.add_argument('--intertwine_updates',type=str2bool,default=True)
 
 args = parser.parse_args()
 print(args)

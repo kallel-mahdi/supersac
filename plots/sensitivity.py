@@ -218,7 +218,7 @@ def create_benchmark_plot():
             std = grouped.std() / np.sqrt(grouped.count())
             
             # Plot
-            ax.plot(x, mean, label=algo.upper(), linewidth=2.5)
+            ax.plot(x, mean, label=algo, linewidth=2.5)
             ax.fill_between(x, mean - std, mean + std, alpha=0.3)
             plotted_algorithms.append(algo)
             print(f"   ✅ Plotted {algo} with {len(x)} data points")
@@ -236,7 +236,7 @@ def create_benchmark_plot():
     handles, labels = axes[0].get_legend_handles_labels()
     if handles:  # Only create legend if there are handles
         print(f"\n📋 Creating legend with {len(labels)} items: {labels}")
-        setup_shared_legend(fig, handles, labels, ncol=len(ALGORITHMS), font_size=19, bbox_y=1.05)
+        setup_shared_legend(fig, handles, labels, ncol=len(ALGORITHMS), font_size=23, bbox_y=1.05)
     else:
         print(f"\n⚠️  No legend items found!")
     

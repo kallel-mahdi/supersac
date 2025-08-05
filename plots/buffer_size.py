@@ -6,7 +6,6 @@ import numpy as np
 
 # Import centralized styling
 from style import (
-    ALGORITHM_COLORS, 
     create_publication_ready_figure,
     set_axis_labels,
     setup_shared_legend, 
@@ -15,7 +14,7 @@ from style import (
 
 # --- Configuration ---
 ENTITY = "mahdikallel"
-PROJECT = "BASELINE_FINAL"
+PROJECT = "AAAI_ABLATIONS_INTER"
 PROJECT_PATH = f"{ENTITY}/{PROJECT}"
 
 # --- Test Mode ---
@@ -23,13 +22,18 @@ TEST_MODE = False
 
 # --- Algorithm Configurations ---
 ALGORITHMS = {
-    "PPO+": {"algo_name": "superppo", "gamma": 0.99, "on_policy_data": False, "temperature": 1., "buffer_size": 50000, 
+    "RB = 5000 (On-policy)": {"algo_name": "superppo", "gamma": 0.99, "on_policy_data": True, "temperature": 1., "buffer_size": 50000, 
              "use_layer_norm": True, "clipping_ratio": 0.25, "num_critics": 2, "bound_actions": True, "gae_lambda": 0.5, 
              "min_target": False, "intertwine_updates": True},
-    "PPO": {"algo_name": "ppo", "hidden_dims": 64},
-    "PPO(ours)": {"algo_name": "ppo", "hidden_dims":256,"update_epochs": 10},
-    "SAC": {"algo_name": "sac","buffer_size": 1e6},
-    "TRPO": {"algo_name": "trpo"},
+    "RB = 25_000": {"algo_name": "superppo", "gamma": 0.99, "on_policy_data": False, "temperature": 1., "buffer_size": 25_000, 
+             "use_layer_norm": True, "clipping_ratio": 0.25, "num_critics": 2, "bound_actions": True, "gae_lambda": 0.5, 
+             "min_target": False, "intertwine_updates": True},
+     "RB=50_000": {"algo_name": "superppo", "gamma": 0.99, "on_policy_data": False, "temperature": 1., "buffer_size": 50000, 
+             "use_layer_norm": True, "clipping_ratio": 0.25, "num_critics": 2, "bound_actions": True, "gae_lambda": 0.5, 
+             "min_target": False, "intertwine_updates": True},
+      "RB=100_000": {"algo_name": "superppo", "gamma": 0.99, "on_policy_data": False, "temperature": 1., "buffer_size": 100_000, 
+             "use_layer_norm": True, "clipping_ratio": 0.25, "num_critics": 2, "bound_actions": True, "gae_lambda": 0.5, 
+             "min_target": False, "intertwine_updates": True},
 }
 
 # # --- Environment Settings ---
@@ -160,9 +164,9 @@ def create_benchmark_plot():
             std = 2 * grouped.std() / np.sqrt(grouped.count())
             
             # Plot
-            color = ALGORITHM_COLORS.get(algo, 'gray')
-            ax.plot(x, mean, label=algo.upper(), color=color, linewidth=2.5)
-            ax.fill_between(x, mean - std, mean + std, color=color, alpha=0.3)
+            
+            ax.plot(x, mean, label=algo.upper(), linewidth=2.5)
+            ax.fill_between(x, mean - std, mean + std, alpha=0.3)
         
         # Set axis labels using utility function
         set_axis_labels(ax, 'Million Steps', 'Policy Return', env)
@@ -201,7 +205,7 @@ def create_benchmark_plot():
             hspace=0.3
         )
     
-    save_publication_figure(fig, "./plots/benchmarks/benchmark")
+    save_publication_figure(fig, "./plots/benchmarks/buffer_size")
     plt.show()
     
     print("Benchmark plot saved!")

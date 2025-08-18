@@ -54,7 +54,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--seed',type=int,default=21) 
 
 parser.add_argument('--algo_name', type=str, default='superppo', help='the name of the RL algorithm')
-parser.add_argument('--project_name',type=str,default="single_exp") 
+parser.add_argument('--project_name',type=str,default="single_exp_off") 
 parser.add_argument('--env_name',type=str,default="Ant-v5") 
 parser.add_argument('--max_steps',type=int,default=1_000_000) 
 parser.add_argument('--max_episode_steps',type=int,default=1000) 

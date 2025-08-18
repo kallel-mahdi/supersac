@@ -4,12 +4,6 @@ distrax
 gymnasium[mujoco]
 wandb
 tqdm
-ml_collections
---pre
---find-links https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
-jax[cuda]
-envpool
-torch ## to get rid of
+jax[cuda12]==0.6.0
 dm_control
 pandas
-mushroom_rl
